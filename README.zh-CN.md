@@ -1,10 +1,12 @@
 # LocalPilot
 
+[English](README.md) · **简体中文**
+
 **在 ChatGPT 网页普通 Chat 中，直接完成本机 AI Coding。**
 
 让 ChatGPT 读取项目、理解本地技能、修改代码、运行测试，并把真实结果带回对话。沿用现有 Chat 的模型能力，LocalPilot 本身不接入额外模型 API、不启动 Codex，也不要求切到 Work。
 
-[快速开始](#快速开始) · [Tunnel 图文教程](docs/TUNNEL.zh-CN.md) · [功能与配置](docs/USAGE.zh-CN.md) · [验证与边界](docs/VERIFICATION.zh-CN.md) · [English](README.en.md)
+[快速开始](#快速开始) · [Tunnel 图文教程](docs/TUNNEL.zh-CN.md) · [功能与配置](docs/USAGE.zh-CN.md) · [验证与边界](docs/VERIFICATION.zh-CN.md)
 
 ![任务计划与验收面板](docs/images/task-panel.png)
 
