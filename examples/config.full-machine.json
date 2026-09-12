@@ -1,0 +1,17 @@
+{
+  "device_label": "My Mac",
+  "workspaces": {"project": "~/Projects/my-app"},
+  "permission_mode": "full_machine",
+  "shell_permission_mode": "full_account",
+  "shell_enabled": true,
+  "shell_network": true,
+  "durable_jobs": true,
+  "prevent_idle_sleep": true,
+  "require_final_assessment": true,
+  "default_task_minutes": 240,
+  "default_max_actions": 1000,
+  "default_max_continuations": 80,
+  "step_cards": false,
+  "browser": {"enabled": true, "headless": false},
+  "mcp_bridge": {"enabled": false}
+}

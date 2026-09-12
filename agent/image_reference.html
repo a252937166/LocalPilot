@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LocalPilot 原图参考</title><style>
+:root{color-scheme:light dark;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{margin:0;background:transparent;color:light-dark(#242424,#eee)}
+main{display:flex;gap:12px;align-items:center;padding:12px 2px}
+img{width:48px;height:48px;object-fit:contain;border-radius:8px;background:light-dark(#f1f1f1,#292929)}
+section{min-width:0}strong{font-size:13px}p{margin:2px 0 0;color:light-dark(#656565,#aaa);font-size:12px;overflow-wrap:anywhere}
+[data-error=true] p{color:light-dark(#a74913,#f1b58c)}
+</style></head><body><main id="card" aria-busy="true"><img id="preview" alt="本机原图参考" hidden><section>
+<strong id="status">准备原图参考</strong><p id="detail" role="status">等待本次调用的图片数据…</p>
+</section></main><script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const START_TIMEOUT_MS = 15000, FILE_API_TIMEOUT_MS = 45000, FOLLOWUP_IDLE_SECONDS = 15;
+  let context = null, source = null, standard = false, bridgeReady = false, busy = false, disposed = false;
+  const bridgeStartedAt = Date.now();
+  let uploadOwner = null, uploadedFileId = null, startedAt = Date.now(), lastRefresh = 0, rpcId = 0;
+  let persistedState = '';
+  const requests = new Map();
+  const post = message => window.parent.postMessage(message, '*');
+  const safeError = error => String(error?.message || error || 'Unknown error').replace(/https?:\/\/\S+/g,'[url]')
+    .replace(/(?:sediment:\/\/)?file[_-][A-Za-z0-9_-]+/g,'[file]').slice(0,300);
+  const isDenied = error => /permission|denied|not allowed|rejected|forbidden|拒绝|拦截|blocked|授权/i.test(safeError(error));
+  const fileKey = id => String(id || '').replace(/^sediment:\/\//,'');
+  function status(title, detail, error = false, pending = false) {
+    $('status').textContent = title; $('detail').textContent = detail;
+    $('card').dataset.error = String(error); $('card').setAttribute('aria-busy', String(pending));
+  }
+  function rpc(method, params) {
+    return new Promise((resolve,reject) => {
+      const id = 'reference-' + ++rpcId;
+      const timer = setTimeout(() => {requests.delete(id);reject(new Error('Host request timed out'));}, 25000);
+      requests.set(id,{resolve,reject,timer}); post({jsonrpc:'2.0',id,method,params});
+    });
+  }
+  function unpack(result) {
+    if (result?.isError || result?.is_error) throw new Error(safeError(result?.content?.find(c=>c.type==='text')?.text || 'Tool rejected request'));
+    if (result?.structuredContent || result?.structured_content) return result.structuredContent || result.structured_content;
+    const text = result?.content?.find(c => c.type === 'text')?.text;
+    return text ? JSON.parse(text) : result;
+  }
+  function privateSource(result) {
+    if (!result || typeof result !== 'object') return null;
+    for (const candidate of [result._meta, result.meta, result]) {
+      if (candidate?.['localpilot/referenceSource']) return candidate['localpilot/referenceSource'];
+    }
+    for (const key of ['call_tool_result','mcp_tool_result','toolResponseMetadata']) {
+      if (result[key]) {const found=privateSource(result[key]);if(found)return found;}
+    }
+    return null;
+  }
+  function ingest(result, metadata) {
+    if (!result) return;
+    const value = unpack(result);
+    if (!value?.task_id || !value?.source_status) return;
+    if (context && value.task_id !== context.task_id) return;
+    // Widget-state notifications may carry the original tool output. It is a
+    // historical snapshot, not a fresh transfer result from the local agent.
+    if (context && Number.isInteger(context.revision)) {
+      if (!Number.isInteger(value.revision) || value.revision < context.revision) return;
+      if (value.revision === context.revision && Number.isFinite(context.observed_at) &&
+          (!Number.isFinite(value.observed_at) || value.observed_at < context.observed_at)) return;
+    }
+    if (!context) startedAt=Date.now();
+    context=value;
+    const incoming = privateSource(result) || privateSource(metadata);
+    if (incoming?.task_id === value.task_id) source={...(source || {}),...incoming};
+    if (source?.data && $('preview').hidden) {
+      $('preview').src='data:' + source.mime_type + ';base64,' + source.data; $('preview').hidden=false;
+    }
+    const saved = window.openai?.widgetState?.privateContent;
+    if (saved?.task_id === value.task_id) {
+      uploadOwner ||= saved.owner;
+      uploadedFileId ||= saved.file_id;
+    }
+    if (value.error) status('原图传递未完成',value.error + (value.error_detail ? ' ' + value.error_detail : ''),true);
+    else if (value.task_status === 'complete') status('图片任务已完成','本机保存和读回结果已通过任务验收。');
+    else if (value.task_status !== 'active') status('传递已停止','本次任务已暂停或结束，不会继续上传或发送消息。');
+    else if (value.followup_status === 'sent') status('已请求继续编辑','原图已校验并附带。等待 ChatGPT 执行和本机保存回执；消息接口返回不代表任务完成。',false,true);
+    else if (value.reference_bound) status('原图已校验','准备将参考图片附到后续对话。',false,true);
+    else status('正在传递原图','自动准备图片参考，无需操作此卡片。',false,true);
+    size();
+  }
+  async function call(name, args) {
+    const result = standard ? await rpc('tools/call',{name,arguments:args}) : await window.openai.callTool(name,args);
+    unpack(result); return result;
+  }
+  const canCall = () => standard || typeof window.openai?.callTool === 'function';
+  const fileApis = () => ['uploadFile','getFileDownloadUrl','setWidgetState']
+    .every(name => typeof window.openai?.[name] === 'function') &&
+    (standard || typeof window.openai?.sendFollowUpMessage === 'function');
+  function bounded(operation) {
+    return new Promise((resolve,reject) => {
+      const timer=setTimeout(()=>reject(new Error('Host file API timed out')),FILE_API_TIMEOUT_MS);
+      Promise.resolve().then(operation).then(value=>{clearTimeout(timer);resolve(value);},error=>{clearTimeout(timer);reject(error);});
+    });
+  }
+  function persist(attach = false) {
+    const value = {
+      modelContent: {task_id:context.task_id,source_path:context.source.path,source_sha256:context.source.sha256,
+                     reference_ready:attach,objective:context.objective,save_binding:context.image_save_binding},
+      privateContent:{task_id:context.task_id,owner:uploadOwner,file_id:uploadedFileId},
+      imageIds:attach && uploadedFileId ? [uploadedFileId] : []
+    };
+    const serialized=JSON.stringify(value);
+    if(serialized===persistedState)return;
+    window.openai.setWidgetState(value);
+    persistedState=serialized;
+  }
+  async function report(code, error) {
+    try {ingest(await call('report_image_edit_handoff',{task_id:context.task_id,status:code,detail:error?safeError(error):''}));}
+    catch {status('原图传递未完成','没有收到宿主确认，已停止本组件的自动动作。',true);disposed=true;}
+  }
+  async function transfer() {
+    const id=context.task_id;
+    if (!fileApis()) {
+      if (Date.now()-startedAt < START_TIMEOUT_MS) return;
+      if (context.source_status !== 'pending') return;
+      uploadOwner=crypto.randomUUID().replaceAll('-','');
+      const claim=unpack(await call('claim_image_edit_upload',{task_id:id,owner:uploadOwner}));
+      if (claim.claimed) await report('unsupported');
+      return;
+    }
+    if (!source?.data && !context.reference_bound) return;
+    if (!uploadedFileId && context.source_status === 'pending') {
+      uploadOwner=crypto.randomUUID().replaceAll('-','');
+      const claim=unpack(await call('claim_image_edit_upload',{task_id:id,owner:uploadOwner}));
+      if (!claim.claimed) return;
+      persist(false);
+      try {
+        const bytes=Uint8Array.from(atob(source.data),c=>c.charCodeAt(0));
+        const digest=await crypto.subtle.digest('SHA-256',bytes);
+        const hash=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,'0')).join('');
+        if (hash !== source.sha256) throw new Error('Source checksum mismatch');
+        const uploaded=await bounded(()=>window.openai.uploadFile(new File([bytes],source.file_name,{type:source.mime_type})));
+        if (!uploaded?.fileId || typeof uploaded.fileId !== 'string') throw new Error('Missing host file reference');
+        uploadedFileId=uploaded.fileId;persist(false);
+      } catch (error) {await report('upload_failed',error);return;}
+    }
+    if (uploadedFileId && !context.reference_bound) {
+      try {
+        const downloaded=await bounded(()=>window.openai.getFileDownloadUrl({fileId:uploadedFileId}));
+        if (!downloaded?.downloadUrl) throw new Error('Missing download URL');
+        ingest(await call('bind_image_edit_reference',{task_id:id,owner:uploadOwner,
+          file:{file_id:uploadedFileId,download_url:downloaded.downloadUrl,mime_type:source.mime_type,file_name:source.file_name}}));
+      } catch (error) {
+        // A successful binding can outlive a dropped RPC response. Read its durable receipt
+        // before declaring failure; an explicit host permission denial still stops the transfer.
+        let recovered=false;
+        if (!isDenied(error)) {
+          try {
+            ingest(await call('get_image_edit_reference',{task_id:id}));
+            recovered=context.reference_bound && context.source_status==='ready' &&
+              fileKey(source?.file_id)===fileKey(uploadedFileId);
+          } catch {}
+        }
+        if (!recovered) {await report('binding_failed',error);return;}
+      }
+    }
+    if (context.reference_bound) {
+      uploadedFileId ||= fileKey(source?.file_id);
+      if (!uploadedFileId) return;
+      persist(true);
+      if (context.followup_status || context.idle_seconds < FOLLOWUP_IDLE_SECONDS) return;
+      const claim=unpack(await call('claim_image_edit_followup',{task_id:id}));
+      if (!claim.send) return;
+      try {
+        // Prefer the negotiated MCP Apps transport. An available legacy alias is
+        // not evidence that it dispatches a turn on a standard host.
+        const delivered = standard
+          ? await rpc('ui/message',{role:'user',content:[{type:'text',text:claim.prompt}]})
+          : await bounded(()=>window.openai.sendFollowUpMessage({prompt:claim.prompt,scrollToBottom:false}));
+        if (delivered?.isError || delivered?.is_error) throw new Error('Host rejected follow-up message');
+        await report('sent');
+      } catch (error) {await report('send_uncertain',error);}
+    }
+  }
+  async function tick() {
+    if (busy || disposed) return;
+    // Do not race the standard handshake with a legacy tool/message call.
+    if (!bridgeReady) {
+      if (Date.now()-bridgeStartedAt < START_TIMEOUT_MS) return;
+      bridgeReady=true;
+    }
+    if (!context) {
+      try {ingest(window.openai?.toolOutput,window.openai?.toolResponseMetadata);} catch {}
+      if (!context && Date.now()-startedAt > START_TIMEOUT_MS) status('未取得本次图片数据','此卡片未绑定图片，不会读取其他任务。',true);
+      return;
+    }
+    if (['complete','cancelled','expired'].includes(context.task_status)) return;
+    if (!canCall()) {
+      if (Date.now()-startedAt > START_TIMEOUT_MS) status('宿主连接未就绪','没有取得本次原图传递接口，未继续上传或生成。',true);
+      return;
+    }
+    busy=true;
+    try {
+      if (Date.now()-lastRefresh > 5000) {
+        ingest(await call('get_image_edit_reference',{task_id:context.task_id}));lastRefresh=Date.now();
+      }
+      if (context.task_status === 'active' && context.source_status !== 'failed' &&
+          context.followup_status !== 'sent') await transfer();
+    } catch {status('同步暂不可用','保留本次图片传递状态，稍后重新查询。',true);}
+    finally {busy=false;}
+  }
+  function size() {
+    const height=Math.ceil($('card').getBoundingClientRect().height);
+    if (standard) post({jsonrpc:'2.0',method:'ui/notifications/size-changed',params:{height,width:Math.ceil(document.documentElement.scrollWidth)}});
+    else window.openai?.notifyIntrinsicHeight?.(height);
+  }
+  window.addEventListener('message',event => {
+    if (event.source !== window.parent || event.data?.jsonrpc !== '2.0') return;
+    const message=event.data;
+    if (!message.method && requests.has(message.id)) {
+      const pending=requests.get(message.id);requests.delete(message.id);clearTimeout(pending.timer);
+      message.error ? pending.reject(new Error(safeError(message.error.message || 'Host rejected request'))) : pending.resolve(message.result);
+    }
+    if (message.id === 'reference-init' && !message.method) {
+      bridgeReady=true;standard=!message.error;
+      if (standard) post({jsonrpc:'2.0',method:'ui/notifications/initialized',params:{}});
+      size();tick();
+    }
+    if (message.method === 'ui/notifications/tool-result') {try{ingest(message.params);}catch{}tick();}
+    if (message.method === 'ui/notifications/host-context-changed' && message.params?.theme) document.documentElement.style.colorScheme=message.params.theme;
+    if (message.method === 'ui/resource-teardown') {disposed=true;if(message.id!==undefined)post({jsonrpc:'2.0',id:message.id,result:{}});}
+  });
+  window.addEventListener('openai:set_globals',event => {
+    const globals=event.detail?.globals || {};
+    if(globals.theme)document.documentElement.style.colorScheme=globals.theme;
+    if ('toolOutput' in globals || 'toolResponseMetadata' in globals) {
+      try {ingest(globals.toolOutput || window.openai?.toolOutput,globals.toolResponseMetadata || window.openai?.toolResponseMetadata);} catch {}
+    }
+    tick();
+  });
+  try {ingest(window.openai?.toolOutput,window.openai?.toolResponseMetadata);} catch {}
+  post({jsonrpc:'2.0',id:'reference-init',method:'ui/initialize',params:{
+    appInfo:{name:'LocalPilot image reference',version:'0.6.15'},appCapabilities:{},protocolVersion:'2026-01-26'}});
+  setInterval(tick,1500);tick();
+})();
+</script></body></html>

@@ -1,0 +1,12 @@
+{
+  "device_label": "My Mac",
+  "workspaces": {"project": "~/Projects/my-app"},
+  "permission_mode": "workspace",
+  "shell_permission_mode": "restricted",
+  "shell_enabled": true,
+  "shell_network": false,
+  "max_file_bytes": 2097152,
+  "step_cards": false,
+  "browser": {"enabled": false},
+  "mcp_bridge": {"enabled": false}
+}

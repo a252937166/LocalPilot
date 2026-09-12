@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LocalPilot 图片流程</title><style>
+:root{color-scheme:light dark;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{margin:0;background:transparent;color:light-dark(#242424,#eee)}
+main{display:flex;gap:12px;align-items:center;padding:12px 2px}
+img{width:48px;height:48px;object-fit:contain;border-radius:8px;background:light-dark(#f1f1f1,#292929)}
+section{min-width:0}strong{font-size:13px}p{margin:2px 0 0;color:light-dark(#656565,#aaa);font-size:12px;overflow-wrap:anywhere}
+[data-error=true] p{color:light-dark(#a74913,#f1b58c)}
+</style></head><body><main id="card" aria-busy="true"><img id="preview" alt="本机原图参考" hidden><section>
+<strong id="status">准备图片流程</strong><p id="detail" role="status">等待本次图片请求…</p>
+</section></main><script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const START_TIMEOUT_MS = 15000, FILE_API_TIMEOUT_MS = 90000, FOLLOWUP_IDLE_SECONDS = 15;
+  const STATE_SETTLE_MS = 1500, STATE_CONFIRM_MS = 10000;
+  let context = null, source = null, standard = false, bridgeReady = false, busy = false, disposed = false;
+  let hostCapabilities = {};
+  const bridgeStartedAt = Date.now();
+  let uploadOwner = null, uploadedFileId = null, startedAt = Date.now(), lastRefresh = 0, rpcId = 0;
+  let uploadReturnedScheme = null;
+  let persistedState = '';
+  const requests = new Map();
+  const post = message => window.parent.postMessage(message, '*');
+  const safeError = error => String(error?.message || error || 'Unknown error').replace(/https?:\/\/\S+/g,'[url]')
+    .replace(/(?:sediment:\/\/)?file[_-][A-Za-z0-9_-]+/g,'[file]').slice(0,300);
+  const isDenied = error => /permission|denied|not allowed|rejected|forbidden|拒绝|拦截|blocked|授权/i.test(safeError(error));
+  const fileKey = id => String(id || '').replace(/^sediment:\/\//,'');
+  function status(title, detail, error = false, pending = false) {
+    $('status').textContent = title; $('detail').textContent = detail;
+    $('card').dataset.error = String(error); $('card').setAttribute('aria-busy', String(pending));
+  }
+  function rpc(method, params) {
+    return new Promise((resolve,reject) => {
+      const id = 'reference-' + ++rpcId;
+      // Binding downloads and verifies the uploaded bytes. Its local fetch can
+      // consume 40 seconds plus a final socket timeout, longer than a normal RPC.
+      const timeout = method === 'tools/call' && params.name === 'bind_image_edit_reference' ? 75000 : 25000;
+      const timer = setTimeout(() => {requests.delete(id);reject(new Error('Host request timed out'));}, timeout);
+      requests.set(id,{resolve,reject,timer}); post({jsonrpc:'2.0',id,method,params});
+    });
+  }
+  function unpack(result) {
+    if (result?.isError || result?.is_error) throw new Error(safeError(result?.content?.find(c=>c.type==='text')?.text || 'Tool rejected request'));
+    if (result?.structuredContent || result?.structured_content) return result.structuredContent || result.structured_content;
+    const text = result?.content?.find(c => c.type === 'text')?.text;
+    return text ? JSON.parse(text) : result;
+  }
+  function privateSource(result) {
+    if (!result || typeof result !== 'object') return null;
+    for (const candidate of [result._meta, result.meta, result]) {
+      if (candidate?.['localpilot/referenceSource']) return candidate['localpilot/referenceSource'];
+    }
+    for (const key of ['call_tool_result','mcp_tool_result','toolResponseMetadata']) {
+      if (result[key]) {const found=privateSource(result[key]);if(found)return found;}
+    }
+    return null;
+  }
+  function ingest(result, metadata) {
+    if (!result) return;
+    const value = unpack(result);
+    if (!value?.task_id || value.workflow !== 'native_image_then_local_save') return;
+    if (context && value.task_id !== context.task_id) return;
+    // Widget-state notifications may carry the original tool output. It is a
+    // historical snapshot, not a fresh transfer result from the local agent.
+    if (context && Number.isInteger(context.revision)) {
+      if (!Number.isInteger(value.revision) || value.revision < context.revision) return;
+      if (value.revision === context.revision && Number.isFinite(context.observed_at) &&
+          (!Number.isFinite(value.observed_at) || value.observed_at < context.observed_at)) return;
+    }
+    if (!context) startedAt=Date.now();
+    context=value;
+    const incoming = privateSource(result) || privateSource(metadata);
+    if (incoming?.task_id === value.task_id) source={...(source || {}),...incoming};
+    if (source?.data && $('preview').hidden && !value.save_readback_verified) {
+      $('preview').src='data:' + source.mime_type + ';base64,' + source.data; $('preview').hidden=false;
+    }
+    if (value.save_readback_verified) $('preview').hidden=true;
+    const saved = window.openai?.widgetState?.privateContent;
+    if (saved?.task_id === value.task_id) {
+      uploadOwner ||= saved.owner;
+      uploadedFileId ||= saved.file_id;
+    }
+    if (value.error) status('图片流程已停止',value.error,true);
+    else if (value.task_status === 'complete') status('已保存到本机','文件和读回已验收：' + value.image_save_binding.path);
+    else if (value.task_status !== 'active') status('图片流程已停止','本次任务已暂停或结束。');
+    else if (value.save_readback_verified) status('已保存并读回',value.image_save_binding.path);
+    else if (value.message_count >= 2) status('已请求保存成图','等待本机文件回执；消息已发送不代表文件已保存。',false,true);
+    else if (value.message_count === 1) status('已请求原生生图','稍后自动续接保存，无需点击。宿主未提供生图完成事件。',false,true);
+    else if (value.source && !value.reference_bound) status('正在传递原图','原图会自动附到创作请求，保留本机原文件。',false,true);
+    else status('准备原生生图','组件将自动发送本次创作要求。',false,true);
+    size();
+  }
+  async function call(name, args) {
+    const result = standard ? await rpc('tools/call',{name,arguments:args}) : await window.openai.callTool(name,args);
+    unpack(result); return result;
+  }
+  const canCall = () => standard || typeof window.openai?.callTool === 'function';
+  const fileApis = () => ['uploadFile','getFileDownloadUrl','setWidgetState']
+    .every(name => typeof window.openai?.[name] === 'function') &&
+    (standard || typeof window.openai?.sendFollowUpMessage === 'function');
+  function bounded(operation) {
+    return new Promise((resolve,reject) => {
+      const timer=setTimeout(()=>reject(new Error('Host file API timed out')),FILE_API_TIMEOUT_MS);
+      Promise.resolve().then(operation).then(value=>{clearTimeout(timer);resolve(value);},error=>{clearTimeout(timer);reject(error);});
+    });
+  }
+  function persist(attach = false, force = false) {
+    if (typeof window.openai?.setWidgetState !== 'function') return false;
+    const value = {
+      modelContent: attach ? {reference_ready:true,source_sha256:context.source.sha256} : {},
+      privateContent:{task_id:context.task_id,owner:uploadOwner,file_id:uploadedFileId},
+      // Native file identifiers are opaque. Preserve uploadFile's exact value;
+      // a recovered component can use the ID confirmed by file-parameter binding.
+      imageIds:attach && (uploadedFileId || source?.file_id) ? [uploadedFileId || source?.file_id] : []
+    };
+    const serialized=JSON.stringify(value);
+    if(serialized===persistedState && !force)return;
+    const stored=window.openai.setWidgetState(value);
+    persistedState=serialized;
+    return stored;
+  }
+  async function confirmImageState(attach) {
+    if (typeof window.openai?.setWidgetState !== 'function') return;
+    // setWidgetState is documented as synchronous. Awaiting its return value
+    // does not wait for the host's subsequent globals/state update.
+    const expected = attach ? [uploadedFileId || source?.file_id] : [];
+    const deadline = Date.now() + STATE_CONFIRM_MS;
+    await new Promise(resolve=>setTimeout(resolve,STATE_SETTLE_MS));
+    while (Date.now() < deadline) {
+      const applied=window.openai.widgetState;
+      if (applied?.privateContent?.task_id===context.task_id &&
+          JSON.stringify(applied.imageIds || [])===JSON.stringify(expected)) return true;
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+    throw new Error('Host image attachment state was not confirmed');
+  }
+  async function report(code, error) {
+    try {await call('report_image_edit_handoff',{task_id:context.task_id,status:code,detail:error?safeError(error):''});ingest(await call('poll_image_workflow',{task_id:context.task_id}));}
+    catch {status('原图传递未完成','没有收到宿主确认，已停止本组件的自动动作。',true);disposed=true;}
+  }
+  async function transfer() {
+    const id=context.task_id;
+    if (!fileApis()) {
+      if (Date.now()-startedAt < START_TIMEOUT_MS) return;
+      if (context.source_status !== 'pending') return;
+      uploadOwner=crypto.randomUUID().replaceAll('-','');
+      const claim=unpack(await call('claim_image_edit_upload',{task_id:id,owner:uploadOwner}));
+      if (claim.claimed) await report('unsupported');
+      return;
+    }
+    if (!source?.data && !context.reference_bound) return;
+    if (!uploadedFileId && context.source_status === 'pending') {
+      uploadOwner=crypto.randomUUID().replaceAll('-','');
+      const claim=unpack(await call('claim_image_edit_upload',{task_id:id,owner:uploadOwner}));
+      if (!claim.claimed) return;
+      persist(false);
+      try {
+        const bytes=Uint8Array.from(atob(source.data),c=>c.charCodeAt(0));
+        const digest=await crypto.subtle.digest('SHA-256',bytes);
+        const hash=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,'0')).join('');
+        if (hash !== source.sha256) throw new Error('Source checksum mismatch');
+        const uploaded=await bounded(()=>window.openai.uploadFile(new File([bytes],source.file_name,{type:source.mime_type})));
+        if (!uploaded?.fileId || typeof uploaded.fileId !== 'string') throw new Error('Missing host file reference');
+        uploadedFileId=uploaded.fileId;uploadReturnedScheme=uploaded.fileId.startsWith('sediment://');persist(false);
+      } catch (error) {await report('upload_failed',error);return;}
+    }
+    if (uploadedFileId && !context.reference_bound) {
+      try {
+        const downloaded=await bounded(()=>window.openai.getFileDownloadUrl({fileId:uploadedFileId}));
+        if (!downloaded?.downloadUrl) throw new Error('Missing download URL');
+        await call('bind_image_edit_reference',{task_id:id,owner:uploadOwner,
+          file:{file_id:uploadedFileId,download_url:downloaded.downloadUrl,mime_type:source.mime_type,file_name:source.file_name}});
+        ingest(await call('poll_image_workflow',{task_id:id}));
+      } catch (error) {
+        // A successful binding can outlive a dropped RPC response. Read its durable receipt
+        // before declaring failure; an explicit host permission denial still stops the transfer.
+        let recovered=false;
+        if (!isDenied(error)) {
+          try {
+            ingest(await call('poll_image_workflow',{task_id:id}));
+            recovered=context.reference_bound && context.source_status==='ready' &&
+              fileKey(source?.file_id)===fileKey(uploadedFileId);
+          } catch {}
+        }
+        if (!recovered) {await report('binding_failed',error);return;}
+      }
+    }
+  }
+  async function dispatch() {
+    if (!context.next_message || context.wait_seconds > 0) return;
+    const id=context.task_id;
+    const attach=context.next_message==='generate' && context.reference_bound;
+    if (attach) {
+      uploadedFileId ||= source?.file_id;
+      if (!uploadedFileId || typeof window.openai?.setWidgetState !== 'function') return;
+    }
+    // The source is attached to creation only; the save request must select the
+    // newly generated image, not re-attach the original as the latest image.
+    const claim=unpack(await call('claim_image_workflow_message',{task_id:id}));
+    if (!claim.send) return;
+    let outcome='sent',detail='';
+    try {
+      // Update the attachment after the claim RPC; it must be the last widget
+      // state associated with the actual follow-up, not an earlier tool call.
+      await bounded(()=>persist(attach,true));
+      const imageStateConfirmed=await confirmImageState(attach);
+      const content=[{type:'text',text:claim.prompt}];
+      let referenceTransport='none';
+      if (attach) {
+        if (!source?.data) throw new Error('Verified reference pixels are unavailable');
+        const bytes=Uint8Array.from(atob(source.data),c=>c.charCodeAt(0));
+        const digest=await crypto.subtle.digest('SHA-256',bytes);
+        const hash=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,'0')).join('');
+        if (hash!==source.sha256) throw new Error('Reference message checksum mismatch');
+        const picture={type:'image',data:source.data,mimeType:source.mime_type};
+        if (standard && hostCapabilities.message?.image) {
+          content.push(picture);referenceTransport='message_image';
+        } else if (standard && hostCapabilities.updateModelContext?.image) {
+          await rpc('ui/update-model-context',{content:[picture],structuredContent:{reference_sha256:hash}});
+          referenceTransport='model_context_image';
+        } else referenceTransport='widget_image_ids';
+      }
+      const delivered = standard
+        ? await rpc('ui/message',{role:'user',content})
+        : await bounded(()=>window.openai.sendFollowUpMessage({prompt:claim.prompt,scrollToBottom:false}));
+      if (delivered?.isError || delivered?.is_error) throw new Error('Host rejected follow-up message');
+      detail=JSON.stringify({reference_transport:referenceTransport,reference_sha256:attach?source.sha256:'',
+        host_image_state_confirmed:!!imageStateConfirmed,
+        host_message_image:!!hostCapabilities.message?.image,host_context_image:!!hostCapabilities.updateModelContext?.image,
+        image_id_scheme_preserved:attach && (uploadedFileId || source?.file_id).startsWith('sediment://'),
+        upload_api_returned_scheme:uploadReturnedScheme});
+    } catch (error) {outcome='send_uncertain';detail=safeError(error);}
+    // Losing this acknowledgement cannot release the message for another send.
+    try {ingest(await call('report_image_workflow_message',{task_id:id,token:claim.token,status:outcome,detail}));}
+    catch {disposed=true;status('消息状态未确认','自动发送已停止，保留已登记的本次请求。',true);}
+  }
+  async function tick() {
+    if (busy || disposed) return;
+    // Do not race the standard handshake with a legacy tool/message call.
+    if (!bridgeReady) {
+      if (Date.now()-bridgeStartedAt < START_TIMEOUT_MS) return;
+      bridgeReady=true;
+    }
+    if (!context) {
+      try {ingest(window.openai?.toolOutput,window.openai?.toolResponseMetadata);} catch {}
+      if (!context && Date.now()-startedAt > START_TIMEOUT_MS) status('未取得本次图片数据','此卡片未绑定图片，不会读取其他任务。',true);
+      return;
+    }
+    if (['complete','cancelled','expired'].includes(context.task_status)) return;
+    if (!canCall()) {
+      if (Date.now()-startedAt > START_TIMEOUT_MS) status('宿主连接未就绪','没有取得本次原图传递接口，未继续上传或生成。',true);
+      return;
+    }
+    busy=true;
+    try {
+      if (Date.now()-lastRefresh > 5000) {
+        ingest(await call('poll_image_workflow',{task_id:context.task_id}));lastRefresh=Date.now();
+      }
+      if (context.task_status === 'active') {
+        if (context.source && !context.reference_bound && context.source_status !== 'failed') await transfer();
+        // Stage the reference during the quiet period, before a later message
+        // consumes widget context; do not first attach it in the send event.
+        if (context.reference_bound && context.message_count===0) {
+          uploadedFileId ||= source?.file_id;
+          if (uploadedFileId) await bounded(()=>persist(true));
+        }
+        await dispatch();
+      }
+    } catch {status('同步暂不可用','保留本次图片传递状态，稍后重新查询。',true);}
+    finally {busy=false;}
+  }
+  function size() {
+    const height=Math.ceil($('card').getBoundingClientRect().height);
+    if (standard) post({jsonrpc:'2.0',method:'ui/notifications/size-changed',params:{height,width:Math.ceil(document.documentElement.scrollWidth)}});
+    else window.openai?.notifyIntrinsicHeight?.(height);
+  }
+  window.addEventListener('message',event => {
+    if (event.source !== window.parent || event.data?.jsonrpc !== '2.0') return;
+    const message=event.data;
+    if (!message.method && requests.has(message.id)) {
+      const pending=requests.get(message.id);requests.delete(message.id);clearTimeout(pending.timer);
+      message.error ? pending.reject(new Error(safeError(message.error.message || 'Host rejected request'))) : pending.resolve(message.result);
+    }
+    if (message.id === 'reference-init' && !message.method) {
+      bridgeReady=true;standard=!message.error;
+      hostCapabilities=message.result?.hostCapabilities || {};
+      if (standard) post({jsonrpc:'2.0',method:'ui/notifications/initialized',params:{}});
+      size();tick();
+    }
+    if (message.method === 'ui/notifications/tool-result') {try{ingest(message.params);}catch{}tick();}
+    if (message.method === 'ui/notifications/host-context-changed' && message.params?.theme) document.documentElement.style.colorScheme=message.params.theme;
+    if (message.method === 'ui/resource-teardown') {disposed=true;if(message.id!==undefined)post({jsonrpc:'2.0',id:message.id,result:{}});}
+  });
+  window.addEventListener('openai:set_globals',event => {
+    const globals=event.detail?.globals || {};
+    if(globals.theme)document.documentElement.style.colorScheme=globals.theme;
+    if ('toolOutput' in globals || 'toolResponseMetadata' in globals) {
+      try {ingest(globals.toolOutput || window.openai?.toolOutput,globals.toolResponseMetadata || window.openai?.toolResponseMetadata);} catch {}
+    }
+    tick();
+  });
+  try {ingest(window.openai?.toolOutput,window.openai?.toolResponseMetadata);} catch {}
+  post({jsonrpc:'2.0',id:'reference-init',method:'ui/initialize',params:{
+    appInfo:{name:'LocalPilot image workflow',version:'0.6.24'},appCapabilities:{},protocolVersion:'2026-01-26'}});
+  setInterval(tick,1500);tick();
+})();
+</script></body></html>

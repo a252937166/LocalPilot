@@ -1,0 +1,146 @@
+{
+  "created_at": "2026-09-12T11:40:45.226906+00:00",
+  "suites": [
+    {
+      "suite": "local",
+      "exit_code": 0,
+      "passed": 31,
+      "total": 31,
+      "seconds": 12.03,
+      "ok": true
+    },
+    {
+      "suite": "harness",
+      "exit_code": 0,
+      "passed": 43,
+      "total": 43,
+      "seconds": 12.97,
+      "ok": true
+    },
+    {
+      "suite": "local_skills",
+      "exit_code": 0,
+      "passed": 48,
+      "total": 48,
+      "seconds": 11.03,
+      "ok": true
+    },
+    {
+      "suite": "upgrades",
+      "exit_code": 0,
+      "passed": 23,
+      "total": 23,
+      "seconds": 2.7,
+      "ok": true
+    },
+    {
+      "suite": "image_workflow",
+      "exit_code": 0,
+      "passed": 56,
+      "total": 56,
+      "seconds": 1.97,
+      "ok": true
+    },
+    {
+      "suite": "review_fixes",
+      "exit_code": 0,
+      "passed": 38,
+      "total": 38,
+      "seconds": 5.59,
+      "ok": true
+    },
+    {
+      "suite": "regressions",
+      "exit_code": 0,
+      "passed": 7,
+      "total": 7,
+      "seconds": 3.83,
+      "ok": true
+    },
+    {
+      "suite": "audit_edges",
+      "exit_code": 0,
+      "passed": 17,
+      "total": 17,
+      "seconds": 3.26,
+      "ok": true
+    },
+    {
+      "suite": "image_bridge_edges",
+      "exit_code": 0,
+      "passed": 24,
+      "total": 24,
+      "seconds": 9.02,
+      "ok": true
+    },
+    {
+      "suite": "images",
+      "exit_code": 0,
+      "passed": 40,
+      "total": 40,
+      "seconds": 5.39,
+      "ok": true
+    },
+    {
+      "suite": "image_edit",
+      "exit_code": 0,
+      "passed": 96,
+      "total": 96,
+      "seconds": 3.12,
+      "ok": true
+    },
+    {
+      "suite": "image_handoff",
+      "exit_code": 0,
+      "passed": 37,
+      "total": 37,
+      "seconds": 2.08,
+      "ok": true
+    },
+    {
+      "suite": "long_runtime",
+      "exit_code": 0,
+      "passed": 29,
+      "total": 29,
+      "seconds": 14.0,
+      "ok": true
+    },
+    {
+      "suite": "browser",
+      "exit_code": 0,
+      "passed": 50,
+      "total": 50,
+      "seconds": 39.59,
+      "ok": true
+    },
+    {
+      "suite": "browser_sessions",
+      "exit_code": 0,
+      "passed": 8,
+      "total": 8,
+      "seconds": 5.58,
+      "ok": true
+    },
+    {
+      "suite": "capability_fixes",
+      "exit_code": 0,
+      "passed": 39,
+      "total": 39,
+      "seconds": 3.3,
+      "ok": true
+    },
+    {
+      "suite": "panel",
+      "exit_code": 0,
+      "passed": 40,
+      "total": 40,
+      "seconds": 367.73,
+      "ok": true
+    }
+  ],
+  "passed": 626,
+  "total": 626,
+  "ok": true,
+  "includes_browser": true,
+  "scope": "Isolated macOS regressions; browser fixtures; no Chat/model API calls."
+}

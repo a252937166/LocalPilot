@@ -1,0 +1,25 @@
+{
+  "name": "localpilot",
+  "version": "0.7.5",
+  "description": "在普通 Chat 中发现本机技能、读写文件、运行 shell、处理图片，并控制 Chrome 浏览器。",
+  "skills": "./skills/",
+  "apps": "./.app.json",
+  "interface": {
+    "displayName": "LocalPilot",
+    "shortDescription": "本机技能、文件、图片与浏览器操作",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "longDescription": "在普通 Chat 中按需发现和读取本机技能，理解项目规则，读写文件和运行 shell；支持 Chrome 页面快照、点击、填表和截屏，支持读图、裁剪调色与原生成图保存。多步骤任务提供持久计划与验收，不要求用户操作面板，不调用 Work 或额外模型 API。",
+    "developerName": "LocalPilot",
+    "defaultPrompt": [
+      "用 LocalPilot 读取本机图片，按我的要求编辑，并把结果保存到原目录的新文件中。"
+    ]
+  },
+  "author": {
+    "name": "a252937166",
+    "url": "https://github.com/a252937166"
+  }
+}

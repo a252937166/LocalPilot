@@ -1,0 +1,20 @@
+{
+  "name": "localpilot-dev",
+  "interface": {
+    "displayName": "LocalPilot Development"
+  },
+  "plugins": [
+    {
+      "name": "localpilot",
+      "source": {
+        "source": "local",
+        "path": "./plugins/localpilot"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

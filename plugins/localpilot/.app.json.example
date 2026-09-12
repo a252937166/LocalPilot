@@ -1,0 +1,7 @@
+{
+  "apps": {
+    "localpilot-connection": {
+      "id": "asdk_app_YOUR_REGISTERED_APP_ID"
+    }
+  }
+}

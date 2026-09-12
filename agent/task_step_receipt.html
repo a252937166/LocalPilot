@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LocalPilot 动作回执</title>
+<style>
+:root{color-scheme:light dark;
+--bg:light-dark(#ffffff,transparent);--g100:light-dark(#f2f2f2,rgba(255,255,255,.06));--g400:light-dark(#eaeaea,rgba(255,255,255,.14));--g500:light-dark(#c9c9c9,rgba(255,255,255,.24));--g600:light-dark(#a8a8a8,rgba(255,255,255,.4));
+--g900:light-dark(#666666,#a1a1a1);--g1000:light-dark(#171717,#ededed);
+--blue:light-dark(#0070f3,#0072f5);--blue-text:light-dark(#0068d6,#52a8ff);--blue-bg:light-dark(#f0f7ff,rgba(0,112,243,.14));--blue-line:light-dark(#cde7fe,rgba(82,168,255,.35));
+--green-text:light-dark(#297a3a,#62c073);--green-bg:light-dark(#effbef,rgba(70,167,88,.14));--green-line:light-dark(#c9efcf,rgba(98,192,115,.35));
+--red-text:light-dark(#cb2a2f,#ff6166);--red-bg:light-dark(#fff0f0,rgba(229,72,77,.14));--red-line:light-dark(#fdd8d8,rgba(255,97,102,.35));
+--amber-text:light-dark(#a35200,#ff990a);--amber-bg:light-dark(#fff6e5,rgba(255,178,36,.14));--amber-line:light-dark(#ffe6bd,rgba(255,153,10,.35));
+--sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue","Segoe UI",sans-serif;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--ease:cubic-bezier(.2,.7,.2,1);
+font:13px/1.5 var(--sans);color:var(--g1000);background:var(--bg);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box;min-width:0}body{margin:0}::selection{background:var(--blue-line)}:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:6px}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none;display:block}
+.card{padding:10px 14px 10px}.row{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:10px;align-items:center}.op{color:var(--g900)}
+.primary{font:12px/1.4 var(--mono);color:var(--g1000);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.end{display:flex;gap:8px;align-items:center;font:11px/1 var(--mono);color:var(--g900)}
+.badge{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:6px;font:500 11px/1 var(--mono);white-space:nowrap;border:1px solid var(--g400);background:var(--g100);color:var(--g900)}
+.badge[data-t=ok]{background:var(--green-bg);border-color:var(--green-line);color:var(--green-text)}.badge[data-t=bad]{background:var(--red-bg);border-color:var(--red-line);color:var(--red-text)}
+.badge[data-t=warn]{background:var(--amber-bg);border-color:var(--amber-line);color:var(--amber-text)}.badge[data-t=run]{background:var(--blue-bg);border-color:var(--blue-line);color:var(--blue-text)}
+.sub{font:11px/1.5 var(--mono);color:var(--g900);margin:4px 0 0 26px;overflow-wrap:anywhere}
+details{border-top:1px solid var(--g400);margin-top:8px;padding-top:6px}summary{cursor:pointer;font-size:12px;font-weight:500;color:var(--g900);list-style:none;display:flex;gap:6px;align-items:center}
+summary::-webkit-details-marker{display:none}summary svg{color:var(--g600);transition:transform .15s var(--ease)}details[open] summary svg{transform:rotate(90deg)}
+dl{margin:6px 0 0;display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 14px;font-size:12px}dt{color:var(--g900);padding-top:3px;white-space:nowrap}dd{margin:0;overflow-wrap:anywhere}
+pre{--pre-bg:light-dark(#f4f4f4,#161616);--pre-shadow:light-dark(rgba(0,0,0,.14),rgba(0,0,0,.6));margin:0;font:12px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--g1000);border:1px solid var(--g400);border-radius:6px;padding:8px 10px;max-height:240px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--g500) transparent;background:linear-gradient(var(--pre-bg) 30%,transparent),linear-gradient(transparent,var(--pre-bg) 70%) 0 100%,radial-gradient(farthest-side at 50% 0,var(--pre-shadow),transparent),radial-gradient(farthest-side at 50% 100%,var(--pre-shadow),transparent) 0 100%,var(--pre-bg);background-repeat:no-repeat;background-size:100% 28px,100% 28px,100% 10px,100% 10px,auto;background-attachment:local,local,scroll,scroll,local}
+pre.err{--pre-bg:light-dark(#fff0f0,#2a1314);border-color:var(--red-line);color:var(--red-text)}pre.old{--pre-bg:light-dark(#fff0f0,#2a1314);border-color:var(--red-line)}pre.new{--pre-bg:light-dark(#effbef,#0b2211);border-color:var(--green-line)}.diff{display:grid;gap:4px}.ids{font:11px/1.6 var(--mono);color:var(--g900)}
+@media(max-width:440px){dl{grid-template-columns:1fr}}
+</style></head><body><main class="card">
+<div class="row"><span class="op" id="op-icon"></span><span class="primary" id="primary">等待 LocalPilot 返回回执…</span><span class="end"><span id="dur"></span><span class="badge" id="chip">等待结果</span></span></div>
+<div class="sub" id="sub"></div>
+<div class="sub" id="sync" role="status" hidden></div>
+<details id="more"><summary><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5"/></svg>输出与详情</summary><dl id="body"></dl></details>
+</main><script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const OPS = {run_shell:'运行命令',read_file:'读取文件',edit_image:'修改图片',save_chat_image:'保存图片',download_image:'下载图片',write_file:'写入文件',replace_text:'修改文件',job_status:'查询命令',cancel_job:'停止命令',list_directory:'列出目录',search_files:'搜索文件'};
+  const OUT = {succeeded:'已执行',completed:'已结束',failed:'失败',running:'运行中',starting:'启动中',cancelled:'已停止',timed_out:'超时',interrupted:'已中断',updated:'已更新',created:'已创建'};
+  const ICON = {run_shell:'<path d="M2.5 4l4 4-4 4M8.5 12h5"/>', read_file:'<path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/>', write_file:'<path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3M6 9.5h4M6 11.5h2.5"/>',
+    replace_text:'<path d="M11 2.5l2.5 2.5-8 8H3v-2.5z"/><path d="M9.5 4l2.5 2.5"/>', search_files:'<circle cx="7" cy="7" r="4"/><path d="M10 10l3.5 3.5"/>', list_directory:'<path d="M2.5 4.5h4l1.5 1.5h5.5v7h-11z"/>',
+    job_status:'<circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/>', cancel_job:'<rect x="4" y="4" width="8" height="8" rx="1.2"/>', circle:'<circle cx="8" cy="8" r="6"/>'};
+  const icon = name => {const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 16 16'); s.setAttribute('aria-hidden', 'true'); s.setAttribute('class', 'i'); s.innerHTML = ICON[name] || ICON.circle; return s;};
+  const duration = s => s == null ? '' : s < 1 ? `${Math.round(s*1000)}ms` : s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s/60)}m ${Math.round(s%60)}s`;
+  const pre = (text, cls) => {const e = document.createElement('pre'); if (cls) e.className = cls; e.textContent = text; return e;};
+  let standard = false, rendered = false, latest = null, refreshing = false, tornDown = false;
+  let failures = 0, retryAt = 0, rpcId = 0;
+  const requests = new Map();
+  function post(msg) {window.parent.postMessage(msg, '*');}
+  function request(method, params) {
+    return new Promise((resolve, reject) => {
+      const id = `receipt-${++rpcId}`;
+      const timer = setTimeout(() => {requests.delete(id); reject(new Error('状态同步超时'));}, 20000);
+      requests.set(id, {resolve, reject, timer}); post({jsonrpc:'2.0',id,method,params});
+    });
+  }
+  async function refreshReceipt() {
+    const current = latest, action = current?.action, taskId = current?.task?.task_id || current?.task_id;
+    if (refreshing || tornDown || Date.now() < retryAt || !taskId || !action?.result?.job_id ||
+        !['running','starting'].includes(action.result.status) || (!standard && !window.openai?.callTool)) return;
+    refreshing = true;
+    try {
+      const args = {task_id:taskId, action_id:action.action_id};
+      const data = unpack(standard ? await request('tools/call', {name:'get_task_activity', arguments:args}) : await window.openai.callTool('get_task_activity', args));
+      if (data?.error) throw new Error(data.error);
+      const record = data?.records?.find(r => r.action_id === action.action_id);
+      if (!record) throw new Error('回执暂不可用');
+      if (latest !== current || tornDown) return;
+      failures = 0; retryAt = 0; $('sync').hidden = true;
+      render({...current, action:record});
+    } catch {
+      failures += 1; retryAt = Date.now() + Math.min(60000, 5000 * 2 ** failures);
+      $('sync').textContent = '状态同步暂不可用，正在重试。当前显示上次回执。'; $('sync').hidden = false;
+    } finally {refreshing = false;}
+  }
+  function primaryOf(inp, res) {
+    return inp.command || inp.path || res.path || (inp.pattern ? `${inp.pattern}${inp.query ? ` · “${inp.query}”` : ''}` : '') || (inp.job_id ? `job ${inp.job_id.slice(0,8)}` : '');
+  }
+  function setOp(operation) {$('op-icon').replaceChildren(icon(operation)); $('op-icon').title = OPS[operation] || operation || '';}
+  function pending(args) {
+    if (rendered || !args) return;
+    setOp(args.operation);
+    $('primary').textContent = primaryOf(args.arguments || {}, {}) || (OPS[args.operation] || '本机动作');
+    $('chip').textContent = '执行中'; $('chip').dataset.t = 'run';
+    $('sub').textContent = `${OPS[args.operation] || ''} · step ${args.step_id || ''} · action ${args.action_id || ''}`;
+  }
+  function unpack(data) {
+    if (data?.isError) return {error: data.content?.find(x => x.type === 'text')?.text || '工具调用失败'};
+    if (data?.structuredContent) return data.structuredContent;
+    const text = data?.content?.find(x => x.type === 'text')?.text;
+    if (text) {try {return JSON.parse(text);} catch {return {error: text};}}
+    return data;
+  }
+  function render(data) {
+    const value = unpack(data);
+    if (!value) return;
+    const first = !rendered, wasOpen = $('more').open;
+    rendered = true;
+    latest = value;
+    const body = $('body'), scrolls = [...body.querySelectorAll('pre')].map(e => e.scrollTop); body.replaceChildren();
+    const row = (label, node) => {const dt = document.createElement('dt'); dt.textContent = label; const dd = document.createElement('dd'); typeof node === 'string' ? dd.textContent = node : dd.append(node); body.append(dt, dd);};
+    if (value.error && !value.action) {
+      setOp('circle'); $('primary').textContent = value.error; $('chip').textContent = '执行失败'; $('chip').dataset.t = 'bad'; $('sub').textContent = ''; $('more').hidden = true; return;
+    }
+    const action = value.action || {}, res = action.result || {}, inp = action.inputs || {}, task = value.task || {};
+    $('more').hidden = false;
+    const outcome = action.status === 'failed' || res.is_error === true ? 'failed' : (res.status && ['run_shell','job_status','cancel_job'].includes(action.operation) ? res.status : action.status);
+    const bad = ['failed','timed_out','interrupted','cancelled'].includes(outcome) || (res.exit_code != null && res.exit_code !== 0);
+    setOp(action.operation);
+    $('primary').textContent = primaryOf(inp, res) || (OPS[action.operation] || '本机动作');
+    $('chip').textContent = `${value.replayed ? 'replayed · ' : ''}${res.exit_code != null ? `exit ${res.exit_code}` : (OUT[outcome] || outcome || '')}`;
+    $('chip').dataset.t = bad ? 'bad' : (outcome === 'running' || outcome === 'starting') ? 'run' : value.replayed ? 'warn' : 'ok';
+    const timing = action.operation === 'run_shell' && res.job_id ? res : action;
+    $('dur').textContent = timing.finished_at != null && timing.started_at != null ? duration(Math.max(0, timing.finished_at - timing.started_at)) : '';
+    const done = (task.plan || []).filter(p => p.status === 'completed').length, cs = task.checks_status;
+    $('sub').textContent = `${OPS[action.operation] || action.operation || ''} · step ${action.step_id || ''} · action ${action.action_id || ''}${task.plan ? ` · 调用时进度：步骤 ${done}/${task.plan.length}` : ''}${cs ? ` · 验收 ${cs.passed}/${cs.total}` : ''}${task.action_count != null ? ` · 动作 ${task.action_count}/${task.max_actions}` : ''}`;
+    if (inp.command) row('命令', pre(inp.command));
+    if (res.cwd || inp.cwd) row('工作目录', res.cwd || inp.cwd);
+    if (res.path || inp.path) row('文件', res.path || inp.path);
+    if (res.entries) row('条目', `${res.entries.length} 项${res.truncated ? '（已截断）' : ''}`);
+    if (res.results) row('结果', `${res.results.length} 个文件${res.truncated ? '（已截断）' : ''}`);
+    if (res.total_chars != null) row('内容', `${res.total_chars} 字符 · ${res.bytes} 字节`);
+    if (action.operation === 'write_file' && inp.content_chars != null) {row('写入', `${inp.content_chars} 字符 · ${OUT[res.status] || res.status || ''}`); if (inp.content_preview) row('内容预览', pre(inp.content_preview));}
+    if (action.operation === 'replace_text' && (inp.old_text != null || inp.new_text != null)) {const d = document.createElement('div'); d.className = 'diff'; d.append(pre(inp.old_text ?? '', 'old'), pre(inp.new_text ?? '', 'new')); row('替换', d);}
+    if (res.previous_sha256) row('修改前 SHA-256', res.previous_sha256);
+    if (res.sha256) row(res.previous_sha256 ? '修改后 SHA-256' : 'SHA-256', res.sha256);
+    const lines = text => text.split('\n').filter((line, i, all) => line !== '' || i < all.length - 1).length;
+    if (res.stdout) row(`stdout · ${lines(res.stdout)} 行`, pre(res.stdout));
+    if (res.stderr) row(`stderr · ${lines(res.stderr)} 行`, pre(res.stderr, 'err'));
+    if (res.error) row('错误', pre(res.error, 'err'));
+    if (res.error_source === 'localpilot') row('错误来源', res.error_stage === 'download_redirect' ? '本机：下载重定向校验' : '本机：文件参数校验');
+    if (res.error_code) row('错误代码', res.error_code);
+    if (res.wrote_file === false) row('文件状态', '未写入');
+    if (res.output_truncated) row('', '输出已在本机按 64 KiB 上限截断。');
+    const ids = document.createElement('span'); ids.className = 'ids';
+    ids.textContent = `${res.job_id ? `job ${res.job_id} · ` : ''}${res.receipt_id ? `receipt ${res.receipt_id} · ` : ''}task ${task.task_id || value.task_id || ''}`;
+    row('标识', ids);
+    $('more').open = first ? bad : wasOpen;
+    [...body.querySelectorAll('pre')].forEach((e, i) => {e.scrollTop = scrolls[i] || 0;});
+    if (first) refreshReceipt();
+  }
+  window.addEventListener('message', event => {
+    if (event.source !== window.parent || event.data?.jsonrpc !== '2.0') return;
+    const msg = event.data;
+    if (!msg.method && requests.has(msg.id)) {const r = requests.get(msg.id); requests.delete(msg.id); clearTimeout(r.timer); msg.error ? r.reject(new Error(msg.error.message || '状态同步失败')) : r.resolve(msg.result);}
+    if (msg.id !== undefined && !msg.method && msg.id === 'receipt-init') {standard = !msg.error; if (msg.result?.hostContext?.theme) document.documentElement.style.colorScheme = msg.result.hostContext.theme; post({jsonrpc:'2.0',method:'ui/notifications/initialized',params:{}}); reportSize(true); refreshReceipt();}
+    if (msg.method === 'ui/notifications/tool-input') pending(msg.params?.arguments || msg.params);
+    if (msg.method === 'ui/notifications/tool-result') render(msg.params);
+    if (msg.method === 'ui/notifications/host-context-changed' && msg.params?.theme) document.documentElement.style.colorScheme = msg.params.theme;
+    if (msg.method === 'ping' && msg.id !== undefined) post({jsonrpc:'2.0',id:msg.id,result:{}});
+    if (msg.method === 'ui/resource-teardown') {tornDown = true; if (msg.id !== undefined) post({jsonrpc:'2.0',id:msg.id,result:{}});}
+  });
+  window.addEventListener('openai:set_globals', event => {const g = event.detail?.globals || {}; if (g.theme) document.documentElement.style.colorScheme = g.theme; if (g.toolOutput) render(g.toolOutput); else pending(g.toolInput);});
+  setOp('circle');
+  if (window.openai?.toolOutput) render(window.openai.toolOutput); else pending(window.openai?.toolInput);
+  post({jsonrpc:'2.0',id:'receipt-init',method:'ui/initialize',params:{appInfo:{name:'LocalPilot step receipt',version:'0.6.7'},appCapabilities:{},protocolVersion:'2026-01-26'}});
+  setInterval(refreshReceipt, 5000);
+  let reportedHeight = 0;
+  function reportSize(force = false) {
+    const h = Math.ceil(document.querySelector('.card').getBoundingClientRect().height);
+    if (!force && Math.abs(h - reportedHeight) < 2) return;
+    if (standard) {post({jsonrpc:'2.0',method:'ui/notifications/size-changed',params:{width:Math.ceil(document.documentElement.scrollWidth),height:h}}); reportedHeight = h;}
+    else if (typeof window.openai?.notifyIntrinsicHeight === 'function') {window.openai.notifyIntrinsicHeight(h); reportedHeight = h;}
+  }
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => reportSize()).observe(document.body);
+  window.addEventListener('load', () => reportSize(true));
+})();
+</script></body></html>

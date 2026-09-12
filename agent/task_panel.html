@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LocalPilot 任务面板</title>
+<style>
+:root{color-scheme:light dark;
+--bg:light-dark(#ffffff,transparent);
+--g100:light-dark(#f2f2f2,rgba(255,255,255,.06));--g200:light-dark(#ebebeb,rgba(255,255,255,.09));--g300:light-dark(#e6e6e6,rgba(255,255,255,.12));
+--g400:light-dark(#eaeaea,rgba(255,255,255,.14));--g500:light-dark(#c9c9c9,rgba(255,255,255,.24));--g600:light-dark(#a8a8a8,rgba(255,255,255,.4));
+--g900:light-dark(#666666,#a1a1a1);--g1000:light-dark(#171717,#ededed);--onink:light-dark(#ffffff,#0a0a0a);
+--blue:light-dark(#0070f3,#0072f5);--blue-text:light-dark(#0068d6,#52a8ff);--blue-bg:light-dark(#f0f7ff,rgba(0,112,243,.14));--blue-line:light-dark(#cde7fe,rgba(82,168,255,.35));
+--green-text:light-dark(#297a3a,#62c073);--green-bg:light-dark(#effbef,rgba(70,167,88,.14));--green-line:light-dark(#c9efcf,rgba(98,192,115,.35));
+--red-text:light-dark(#cb2a2f,#ff6166);--red-bg:light-dark(#fff0f0,rgba(229,72,77,.14));--red-line:light-dark(#fdd8d8,rgba(255,97,102,.35));
+--amber-text:light-dark(#a35200,#ff990a);--amber-bg:light-dark(#fff6e5,rgba(255,178,36,.14));--amber-line:light-dark(#ffe6bd,rgba(255,153,10,.35));
+--sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue","Segoe UI",sans-serif;
+--mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+--ease:cubic-bezier(.2,.7,.2,1);
+font:13px/1.5 var(--sans);color:var(--g1000);background:var(--bg);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box;min-width:0}body{margin:0}[hidden]{display:none!important}::selection{background:var(--blue-line);color:var(--g1000)}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:6px}
+svg.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none;display:block}
+.panel{padding:0 20px 14px}
+.hd{display:flex;align-items:center;justify-content:space-between;gap:12px;height:48px;border-bottom:1px solid var(--g400)}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;letter-spacing:-.01em;min-width:0}.brand svg{color:var(--g1000)}
+.brand .device-label{font-weight:400;color:var(--g900);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:500;color:var(--g900);white-space:nowrap}
+.status:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--g600)}
+.status[data-state=active]{color:var(--blue-text)}.status[data-state=active]:before{background:var(--blue);animation:pulse 1.8s var(--ease) infinite}
+.status[data-state=complete]{color:var(--green-text)}.status[data-state=complete]:before{background:var(--green-text)}
+.status[data-state=changed]{color:var(--amber-text)}.status[data-state=changed]:before{background:var(--amber-text)}
+.status[data-state=paused]:before,.status[data-state=budget_limited]:before{background:var(--amber-text)}.status[data-state=paused],.status[data-state=budget_limited]{color:var(--amber-text)}
+.status[data-state=cancelled]{color:var(--red-text)}.status[data-state=cancelled]:before{background:var(--red-text)}
+@keyframes pulse{50%{opacity:.35}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.objective-wrap{padding:18px 0 4px;display:flex;flex-direction:column;gap:6px}
+.objective{font-size:16px;line-height:1.45;font-weight:600;letter-spacing:-.02em;margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
+.sk{display:inline-block;height:12px;width:56px;border-radius:4px;background:var(--g200);vertical-align:middle}.sk.line{display:block;height:14px;width:82%;margin:6px 0}.sk.line+.sk.line{width:58%}
+.objective.clamped{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.textbtn{font:inherit;font-size:12px;font-weight:500;color:var(--g900);background:none;border:0;padding:0;cursor:pointer;align-self:flex-start;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--g500);transition:color .15s var(--ease)}
+.textbtn:hover{color:var(--g1000);text-decoration-color:var(--g1000)}.textbtn:disabled{color:var(--g600);cursor:default;text-decoration:none}
+.facts{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--g400);border-radius:6px;margin:14px 0 12px;overflow:hidden}
+.fact{padding:9px 12px 8px;border-left:1px solid var(--g400);display:flex;flex-direction:column;gap:1px}.fact:first-child{border-left:0}
+.fact b{font-size:16px;font-weight:600;letter-spacing:-.02em;line-height:1.3}.fact b small{font-size:12px;font-weight:400;color:var(--g900)}
+.fact span{font-size:11px;color:var(--g900);letter-spacing:.01em}
+.segments{display:flex;gap:2px;height:3px;margin:0 0 6px}.segments i{flex:1;background:var(--g300);border-radius:2px;transition:background .3s var(--ease)}
+.segments i[data-s=completed]{background:var(--g1000)}.segments i[data-s=in_progress]{background:var(--blue)}
+section.list{padding-top:14px}
+section.list h2{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:0 0 4px;font-size:13px;font-weight:600;letter-spacing:-.01em}
+section.list h2 small{font-weight:400;font-size:12px;color:var(--g900)}
+.steps,.checklist{list-style:none;margin:0;padding:0}
+.step,.check{display:grid;grid-template-columns:16px 1fr auto;gap:10px;align-items:start;padding:9px 0;margin:0;border-top:1px solid var(--g400);transition:background .15s var(--ease)}
+.steps>li:first-child,.checklist>li:first-child{border-top:0}
+.step{cursor:pointer}.step:hover{background:var(--g100)}.step[data-filtered=true]{outline:1px solid var(--g1000);outline-offset:2px;border-radius:4px}
+.glyph{width:16px;height:16px;margin-top:2px;color:var(--g600);display:inline-flex}
+.glyph[data-s=completed]{color:var(--g1000)}.glyph[data-s=in_progress]{color:var(--blue)}
+.glyph[data-s=pass]{color:var(--green-text)}.glyph[data-s=fail]{color:var(--red-text)}.glyph[data-s=stale]{color:var(--amber-text)}
+.txt{font-size:13px;line-height:1.5;overflow-wrap:anywhere}.step[data-s=completed] .txt{color:var(--g900)}
+.meta{font-size:12px;color:var(--g900);margin-top:1px;overflow-wrap:anywhere}
+.ev{font:12px/1.5 var(--mono);color:var(--g900);margin-top:2px;overflow-wrap:anywhere}
+.badge{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:6px;font-size:11px;font-weight:500;white-space:nowrap;border:1px solid var(--g400);background:var(--g100);color:var(--g900);margin-top:1px}
+.badge[data-t=ok]{background:var(--green-bg);border-color:var(--green-line);color:var(--green-text)}
+.badge[data-t=bad]{background:var(--red-bg);border-color:var(--red-line);color:var(--red-text)}
+.badge[data-t=warn]{background:var(--amber-bg);border-color:var(--amber-line);color:var(--amber-text)}
+.badge[data-t=run]{background:var(--blue-bg);border-color:var(--blue-line);color:var(--blue-text)}
+.badge.mono{font-family:var(--mono);font-size:11px}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-top:16px;margin-top:12px;border-top:1px solid var(--g400)}
+button.btn{font:inherit;font-size:13px;font-weight:500;height:32px;padding:0 12px;border:1px solid var(--g400);border-radius:6px;cursor:pointer;color:var(--g1000);background:var(--bg);display:inline-flex;align-items:center;gap:6px;transition:background .15s var(--ease),border-color .15s var(--ease),color .15s var(--ease)}
+button.btn:hover{background:var(--g100);border-color:var(--g500)}
+button.btn.primary{background:var(--g1000);color:var(--onink);border-color:var(--g1000)}button.btn.primary:hover{background:var(--g900);border-color:var(--g900)}
+button.btn[aria-pressed=true]{background:var(--blue-bg);border-color:var(--blue-line);color:var(--blue-text)}
+button.btn:disabled{background:var(--g100);border-color:var(--g400);color:var(--g600);cursor:not-allowed}
+button.btn.icon{width:32px;padding:0;justify-content:center;color:var(--g900)}button.btn.icon:hover{color:var(--g1000)}
+.spacer{flex:1}
+#note{font-size:13px;line-height:1.55;color:var(--g900);margin-top:12px;padding:9px 12px;border:1px solid var(--g400);border-radius:6px;display:flex;gap:8px;align-items:flex-start}
+#note:empty{display:none}#note[data-t=ok]{border-color:var(--green-line);background:var(--green-bg);color:var(--green-text)}#note[data-t=warn]{border-color:var(--amber-line);background:var(--amber-bg);color:var(--amber-text)}
+#feedback{font-size:12px;line-height:1.5;color:var(--g900);margin-top:10px;min-height:1em}#feedback:empty{display:none}#feedback[data-error=true]{color:var(--red-text)}
+.fallback{margin-top:10px;padding:12px;border:1px solid var(--amber-line);background:var(--amber-bg);border-radius:6px}.fallback p{font-size:12px;margin:0 0 8px;color:var(--amber-text)}.fallback[hidden]{display:none}
+textarea{width:100%;min-height:72px;resize:vertical;font:12px/1.6 var(--mono);background:var(--bg);color:var(--g1000);border:1px solid var(--g400);border-radius:6px;padding:8px 10px;caret-color:var(--blue)}
+details.section{border-top:1px solid var(--g400);margin-top:16px;padding-top:12px}
+details.section>summary{cursor:pointer;font-size:13px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;gap:8px;list-style:none;width:fit-content;color:var(--g1000)}
+summary::-webkit-details-marker{display:none}
+details.section>summary svg.chev{color:var(--g600);transition:transform .15s var(--ease)}details.section[open]>summary svg.chev{transform:rotate(90deg)}
+.filter{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--g900);margin-top:10px;padding:6px 10px;border:1px solid var(--g400);background:var(--g100);border-radius:6px}.filter[hidden]{display:none}.filter span{color:var(--g1000)}.filter .textbtn{white-space:nowrap;flex:none;margin-left:auto}
+.group{margin-top:14px}.group h3{display:grid;grid-template-columns:16px 1fr;gap:8px;align-items:start;margin:0 0 6px;font-size:13px;font-weight:500;letter-spacing:-.01em}
+.group h3 .t{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;line-height:1.45}
+.log{border:1px solid var(--g400);border-radius:6px;overflow:hidden}.rec{border:0;border-top:1px solid var(--g400);margin:0}.log>.rec:first-child{border-top:0}
+.rec>summary{transition:background .15s var(--ease)}.rec>summary:hover{background:var(--g100)}
+.rec>summary{display:grid;grid-template-columns:auto 16px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;cursor:pointer;list-style:none;font-size:13px}
+.rec>summary .ts{font:11px/1 var(--mono);color:var(--g900)}.rec>summary .op{color:var(--g900)}
+.rec>summary .primary{font:12px/1.4 var(--mono);color:var(--g1000);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rec>summary .end{display:flex;gap:8px;align-items:center;font:11px/1 var(--mono);color:var(--g900)}
+.rec .body{margin:0;padding:6px 10px 10px;border-top:1px solid var(--g400);display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 14px;font-size:12px}
+.rec .body dt{color:var(--g900);padding-top:4px;white-space:nowrap}.rec .body dd{margin:0;overflow-wrap:anywhere;line-height:1.5}
+pre{--pre-bg:light-dark(#f4f4f4,#161616);--pre-shadow:light-dark(rgba(0,0,0,.14),rgba(0,0,0,.6));margin:0;font:12px/1.6 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--g1000);border:1px solid var(--g400);border-radius:6px;padding:8px 10px;max-height:240px;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--g500) transparent;tab-size:4;
+background:linear-gradient(var(--pre-bg) 30%,transparent),linear-gradient(transparent,var(--pre-bg) 70%) 0 100%,radial-gradient(farthest-side at 50% 0,var(--pre-shadow),transparent),radial-gradient(farthest-side at 50% 100%,var(--pre-shadow),transparent) 0 100%,var(--pre-bg);background-repeat:no-repeat;background-size:100% 28px,100% 28px,100% 10px,100% 10px,auto;background-attachment:local,local,scroll,scroll,local}
+pre::-webkit-scrollbar{width:8px;height:8px}pre::-webkit-scrollbar-thumb{background:var(--g500);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+pre.err{--pre-bg:light-dark(#fff0f0,#2a1314);--pre-shadow:light-dark(rgba(203,42,47,.18),rgba(0,0,0,.6));border-color:var(--red-line);color:var(--red-text)}pre.old{--pre-bg:light-dark(#fff0f0,#2a1314);border-color:var(--red-line)}pre.new{--pre-bg:light-dark(#effbef,#0b2211);border-color:var(--green-line)}.diff{display:grid;gap:4px}
+code{font:12px/1.5 var(--mono);overflow-wrap:anywhere}.ids{font:11px/1.6 var(--mono);color:var(--g900)}
+.technical{font:12px/1.6 var(--sans);color:var(--g900);white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0 0}.technical code{font-size:11px}
+.footer{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--g900);font:11px/1.5 var(--sans);margin-top:14px;padding-top:12px;border-top:1px solid var(--g400)}
+@media(max-width:560px){.facts{grid-template-columns:repeat(6,minmax(0,1fr))}.fact{grid-column:span 2}.fact:nth-child(n+4){grid-column:span 3;border-top:1px solid var(--g400)}.fact:nth-child(4){border-left:0}}
+@media(max-width:440px){.panel{padding:0 14px 12px}.rec>summary{grid-template-columns:16px minmax(0,1fr) auto}.rec>summary .ts{display:none}.rec .body{grid-template-columns:1fr}.rec .body dt{padding-top:6px}}
+html[data-mode=fullscreen] .panel{max-width:none;padding:0 32px 20px;display:grid;grid-template-columns:minmax(320px,440px) minmax(0,1fr);column-gap:0;align-content:start}
+html[data-mode=fullscreen] .panel>*{grid-column:1;margin-right:32px}
+html[data-mode=fullscreen] #timeline{grid-column:2;grid-row:1/span 30;margin:0;border-top:0;border-left:1px solid var(--g400);padding:14px 0 0 32px}
+html[data-mode=fullscreen] #timeline>summary{pointer-events:none}html[data-mode=fullscreen] #timeline>summary svg.chev{display:none}
+html[data-mode=fullscreen] .objective.clamped{display:block;-webkit-line-clamp:unset}html[data-mode=fullscreen] #objective-toggle{display:none}
+html[data-mode=fullscreen] pre{max-height:520px}
+@media(max-width:860px){html[data-mode=fullscreen] .panel{display:block;padding:0 20px 14px}html[data-mode=fullscreen] .panel>*{margin-right:0}html[data-mode=fullscreen] #timeline{border-left:0;border-top:1px solid var(--g400);padding:12px 0 0}}
+</style></head><body>
+<!--
+THESIS: A deployment-log instrument for a task running on the user's own Mac. It refuses the dashboard-of-cards arrangement and never restates the chat; it shows only what the Mac can prove: steps, checks, receipts.
+OWN-WORLD: Vercel Geist grammar. White or host-dark ground, 1px gray-400 hairlines as the only structure, gray-1000 ink with one blue reserved for live state, green/red/amber only as status, tabular numerals, mono for commands, hashes and ids, 6px radii, 32px controls, 16px 1.5-stroke icons.
+STORY: A developer glancing between confirmations reads state in one line, failures first, then plan, checks and logs, and continues, pauses or arms auto-continue without reading prose.
+FIRST VIEWPORT: 48px header (device glyph, name, device label, status dot), the objective as the only heading, a hairline fact strip of five values, a 3px segmented progress rule, the steps list. Primary action "继续任务", black, left-aligned under the checks.
+FORM: Geist deployment-detail grammar, pinned by the user (beats the roll); seed key 563b4b0e acknowledged.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+-->
+<style>
+.panel[data-empty="true"] .facts,.panel[data-empty="true"] .segments,.panel[data-empty="true"] section.list,
+.panel[data-empty="true"] #timeline,.panel[data-empty="true"] #next,.panel[data-empty="true"] #auto,
+.panel[data-empty="true"] #pause,.panel[data-empty="true"] #mode{display:none}
+</style>
+<main class="panel">
+<header class="hd"><div class="brand"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="8.5" rx="1.5"/><path d="M5.5 13.5h5"/></svg>LocalPilot <span id="device" class="device-label"></span></div><span id="status" class="status" data-state="">连接中</span></header>
+<div class="objective-wrap"><h1 id="objective" class="objective clamped" aria-busy="true"><span class="sk line"></span><span class="sk line"></span></h1><button id="objective-toggle" class="textbtn" hidden>展开全文</button></div>
+<div class="facts" aria-label="任务概况"><div class="fact" id="stat-steps"><b><i class="sk"></i></b><span>步骤</span></div><div class="fact" id="stat-checks"><b><i class="sk"></i></b><span>验收</span></div><div class="fact" id="stat-actions"><b><i class="sk"></i></b><span>动作</span></div><div class="fact" id="stat-continuations"><b><i class="sk"></i></b><span>续跑</span></div><div class="fact" id="stat-time"><b><i class="sk"></i></b><span>剩余时间</span></div></div>
+<div class="segments" id="segments" role="progressbar" aria-label="计划进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"></div>
+<section class="list"><h2>计划步骤 <small id="plan-hint"></small></h2><ol id="plan" class="steps"></ol></section>
+<section class="list"><h2>验收条件 <small id="checks-hint"></small></h2><ul id="checks" class="checklist"></ul></section>
+<div class="controls"><button id="next" class="btn primary" disabled>继续任务</button><button id="auto" class="btn" disabled aria-pressed="false">自动续跑</button><button id="pause" class="btn" disabled>暂停</button><span class="spacer"></span><button id="mode" class="btn icon" hidden aria-label="全屏查看" title="全屏查看"></button><button id="refresh" class="btn icon" aria-label="刷新" title="刷新"></button></div>
+<div id="note" data-t=""></div>
+<div id="feedback" role="status" aria-live="polite"></div><p id="live-state" class="technical" aria-live="polite">等待本次任务数据…</p>
+<div id="fallback" class="fallback" hidden><p>尚未确认 Chat 开始下一轮。先检查聊天记录；若没有新消息，可复制下方文字发送。若本机连接已断开，先重新连接 LocalPilot；安全拦截需先解决。</p><textarea id="resume-text" aria-label="手动续跑文字" readonly></textarea></div>
+<details id="timeline" class="section" open><summary><svg class="i chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5"/></svg>执行记录 <span id="timeline-count" class="badge">尚无动作</span></summary><div id="filter" class="filter" hidden><span id="filter-text"></span><button id="filter-clear" class="textbtn">显示全部</button></div><div id="records"><p class="technical">展开后读取实际执行记录。</p></div></details>
+<details id="connection-details" class="section"><summary><svg class="i chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5"/></svg>连接与说明</summary><p id="identity" class="technical"></p><p id="connection" class="technical"></p><p id="auto-help" class="technical">自动续跑按任务的等待时间请求下一轮。它无法读取 Chat 的真实结束事件；页面关闭或面板卸载后停止。本机不调用模型 API。</p></details>
+<footer class="footer"><span id="version">面板 0.6.9-r30 · 使用当前 Chat 模型</span><span id="auto-note">自动续跑已关闭</span></footer>
+</main><script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const VERSION = '0.6.9-r30';
+  const NAMES = {active:'进行中',paused:'已暂停',cancelled:'已取消',complete:'已验收',budget_limited:'已到上限'};
+  const OPS = {run_shell:'运行命令',read_file:'读取文件',edit_image:'修改图片',save_chat_image:'保存图片',download_image:'下载图片',read_image:'读取图片',write_file:'写入文件',replace_text:'修改文件',apply_patch:'应用补丁',job_status:'查询命令',cancel_job:'停止命令',list_directory:'列出目录',search_files:'搜索文件',find_skills:'匹配技能',get_project_context:'读取项目规则',read_local_skill:'读取技能',list_mcp_tools:'列出 MCP 工具',call_mcp_tool:'调用 MCP 工具'};
+  const OUT = {succeeded:'已执行',completed:'已结束',failed:'失败',running:'运行中',starting:'启动中',cancelled:'已停止',timed_out:'超时',interrupted:'已中断',updated:'已更新',created:'已创建'};
+  const ICON = {
+    check:'<path d="M3.5 8.5l3 3 6-7"/>', circle:'<circle cx="8" cy="8" r="6"/>', dot:'<circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2.2" fill="currentColor" stroke="none"/>',
+    x:'<circle cx="8" cy="8" r="6"/><path d="M6 6l4 4M10 6l-4 4"/>', alert:'<circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h.01"/>', chevron:'<path d="M6 3.5L10.5 8 6 12.5"/>',
+    run_shell:'<path d="M2.5 4l4 4-4 4M8.5 12h5"/>', read_file:'<path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/>', write_file:'<path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3M6 9.5h4M6 11.5h2.5"/>',
+    replace_text:'<path d="M11 2.5l2.5 2.5-8 8H3v-2.5z"/><path d="M9.5 4l2.5 2.5"/>', search_files:'<circle cx="7" cy="7" r="4"/><path d="M10 10l3.5 3.5"/>', list_directory:'<path d="M2.5 4.5h4l1.5 1.5h5.5v7h-11z"/>',
+    job_status:'<circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/>', cancel_job:'<rect x="4" y="4" width="8" height="8" rx="1.2"/>',
+    maximize:'<path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5L9 7M2.5 13.5L7 9"/>', minimize:'<path d="M13.5 6.5h-4v-4M2.5 9.5h4v4M13.5 2.5L9 7M2.5 13.5L7 9"/>',
+    refresh:'<path d="M13 8a5 5 0 1 1-1.5-3.5M13 3v2.5h-2.5"/>', info:'<circle cx="8" cy="8" r="6"/><path d="M8 7.5v3.5M8 5h.01"/>',
+    apply_patch:'<path d="M11 2.5l2.5 2.5-8 8H3v-2.5z"/><path d="M9.5 4l2.5 2.5"/>',
+    call_mcp_tool:'<path d="M2.5 4l4 4-4 4M8.5 12h5"/>',
+    list_mcp_tools:'<path d="M2.5 4.5h4l1.5 1.5h5.5v7h-11z"/>',
+    find_skills:'<circle cx="7" cy="7" r="4"/><path d="M10 10l3.5 3.5"/>',
+    get_project_context:'<path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/>',
+    read_local_skill:'<path d="M4 2.5h5l3 3v8H4z"/><path d="M9 2.5v3h3"/>'
+  };
+  const icon = (name, cls = '') => {const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 16 16'); s.setAttribute('aria-hidden', 'true'); s.setAttribute('class', `i ${cls}`.trim()); s.innerHTML = ICON[name] || ICON.circle; return s;};
+  const TASK_DATA_TIMEOUT_MS = 10000;
+  const S = {task:null,taskId:null,standard:false,connected:false,armed:false,busy:false,submittedRevision:null,failures:0,ticks:0,tornDown:false,waitExpired:false,
+             fetchedAt:0,filter:null,activity:null,activityRevision:null,activityBusy:false,mode:'inline',modes:[],host:'',lastExchange:'',lastPhase:'',
+             details:new Map(),open:new Set(),objectiveOpen:false,noted:''};
+  const instanceId = typeof crypto?.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+  const pending = new Map(); let rpcId = 0, refreshPromise = null, reportedHeight = 0, polling = false;
+  const fmt = {
+    duration: s => s == null ? '' : s < 1 ? `${Math.round(s*1000)}ms` : s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s/60)}m ${Math.round(s%60)}s`,
+    span: s => s <= 0 ? '已到限' : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s/60)}m` : `${Math.floor(s/3600)}h ${Math.round(s%3600/60)}m`,
+    short: sha => sha ? `${sha.slice(0,7)}…${sha.slice(-4)}` : '',
+    time: t => t ? new Date(t*1000).toLocaleTimeString('zh-CN',{hour12:false}) : '',
+  };
+  const feedback = (message, error = false) => {$('feedback').textContent = message; $('feedback').dataset.error = String(error);};
+  const note = (message, tone = '') => {if (S.noted !== message) {S.noted = message; const n = $('note'); n.replaceChildren(); n.dataset.t = tone; if (message) {n.append(icon('info'), document.createTextNode(message));}}};
+  const diagnostics = () => {$('connection').textContent = `面板 ${VERSION}\n${S.standard ? 'MCP Apps' : '兼容桥接'} · ${S.connected ? '已连接' : S.waitExpired ? (S.taskId ? '暂未同步' : '未绑定任务') : '连接中'} · 显示 ${S.mode}${S.modes.length ? `（可用 ${S.modes.join(' / ')}）` : ''}\n${S.host}\n工具接口 ${S.compatTools ? 'ChatGPT 兼容桥接' : 'MCP Apps'} · 兼容接口 ${typeof window.openai?.callTool === 'function' ? '可用' : '不可用'}\n${S.lastPhase}\n${S.lastExchange}`;};
+  const phase = message => {S.lastPhase = message; feedback(message); diagnostics();};
+  const el = (tag, cls, text) => {const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e;};
+  const pre = (text, cls) => el('pre', cls, text);
+  function fallback() {
+    if (!S.taskId) return;
+    $('fallback').hidden = false;
+    $('resume-text').value = `继续 LocalPilot 任务 ${S.taskId}。先 get_task 核对该任务的目标、状态、预算和阻塞原因。若是用户主动暂停且阻塞已解决，用 set_task_state 恢复 active，再通过 run_task_step 执行，review_task 和 finish_task 验收；安全拦截未解决时保持暂停。保持普通 Chat 和原授权范围；若任务已到上限，报告保存的进度。`;
+  }
+  function post(message) {window.parent.postMessage(message, '*');}
+  function notify(method, params) {post({jsonrpc:'2.0',method,params});}
+  function request(method, params) {
+    return new Promise((resolve, reject) => {
+      const id = `localpilot-${instanceId}-${++rpcId}`;
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        const message = method === 'ui/message' ? '续跑消息尚未收到 Chat 确认。当前检查点不会自动重发；有真实任务进展后恢复自动续跑。' : `${method} 未收到宿主确认。可点击刷新检查最新状态。`;
+        reject(Object.assign(new Error(message),{uncertain:true}));
+      }, 20000);
+      pending.set(id, {resolve, reject, timer});
+      post({jsonrpc:'2.0',id,method,params});
+    });
+  }
+  function unpack(data) {
+    if (data?.isError) throw new Error(data.content?.find(x => x.type === 'text')?.text || '工具调用失败');
+    if (data?.structuredContent) return data.structuredContent;
+    const content = data?.content?.find(x => x.type === 'text')?.text;
+    if (content) {try {return JSON.parse(content);} catch { /* Plain text result. */ }}
+    return data;
+  }
+  function bindTask(id) {
+    if (!id || typeof id !== 'string') return false;
+    if (S.taskId && S.taskId !== id) return false;
+    if (!S.taskId) {
+      S.taskId = id;
+      // Per-widget state, never shared localStorage or a global "latest task".
+      try {window.openai?.setWidgetState?.({...window.openai.widgetState, localpilotTaskId:id});} catch { /* Optional host extension. */ }
+    }
+    return true;
+  }
+  function receive(data) {
+    if (!data) return;
+    const value = unpack(data);
+    if (value?.task_id && Array.isArray(value.plan)) {
+      if (!bindTask(value.task_id)) return;
+      if (S.task && value.task_id === S.task.task_id && (value.revision < S.task.revision || (value.revision === S.task.revision && (value.continuations ?? 0) < (S.task.continuations ?? 0)))) return;
+      if (S.awaitingProgressRevision != null && value.revision > S.awaitingProgressRevision && value.auto_continue) {
+        S.autoSuspended = false; S.awaitingProgressRevision = null;
+        $('fallback').hidden = true;
+        feedback('任务已有真实进展，自动续跑已恢复。');
+      }
+      S.task = value; S.taskId = value.task_id; S.fetchedAt = Date.now();
+      if (S.waitExpired) {S.waitExpired = false; feedback('已收到本任务的数据。');}
+      if (typeof value.auto_continue === 'boolean' && !S.autoSuspended) S.armed = value.auto_continue;
+      render();
+      // A host-pushed result usually arrives after the handshake; connect right away instead of waiting for the next poll.
+      if (!S.connected && (S.standard || window.openai?.callTool)) refresh().then(ok => {if (ok) feedback('任务进度已同步。');}).catch(() => {});
+    }
+  }
+  function applyHost(context) {
+    if (!context) return;
+    if (context.theme) document.documentElement.style.colorScheme = context.theme;
+    if (context.displayMode) S.mode = context.displayMode;
+    if (Array.isArray(context.availableDisplayModes)) S.modes = context.availableDisplayModes;
+    document.documentElement.dataset.mode = S.mode;
+    if (S.mode === 'fullscreen' && !$('timeline').open) $('timeline').open = true;
+    render();
+  }
+  window.addEventListener('message', event => {
+    if (event.source !== window.parent || event.data?.jsonrpc !== '2.0') return;
+    const msg = event.data;
+    S.lastExchange = `${msg.method || (msg.error ? '错误返回' : '返回')} ${msg.id ?? ''}`; diagnostics();
+    if (!msg.method && pending.has(msg.id)) {
+      const p = pending.get(msg.id); pending.delete(msg.id); clearTimeout(p.timer);
+      msg.error ? p.reject(new Error(msg.error.message || '宿主拒绝请求')) : p.resolve(msg.result);
+    }
+    if (msg.method === 'ui/notifications/tool-result') receive(msg.params);
+    if (msg.method === 'ui/notifications/tool-input') bindTask(msg.params?.arguments?.task_id || msg.params?.task_id);
+    if (msg.method === 'ui/notifications/host-context-changed') applyHost(msg.params);
+    if (msg.method === 'ping' && msg.id !== undefined) post({jsonrpc:'2.0',id:msg.id,result:{}});
+    if (msg.method === 'ui/resource-teardown') {
+      S.armed = false; S.tornDown = true;
+      if (msg.id !== undefined) post({jsonrpc:'2.0',id:msg.id,result:{}});
+    }
+  });
+  window.addEventListener('openai:set_globals', event => {const g = event.detail?.globals || {}; bindTask(g.toolInput?.task_id); receive(g.toolOutput); applyHost({theme:g.theme, displayMode:g.displayMode});});
+  function compatTool(name, args) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(Object.assign(new Error('ChatGPT 兼容工具接口未确认请求。'), {uncertain:true})), 20000);
+      Promise.resolve().then(() => window.openai.callTool(name,args))
+        .then(resolve,reject).finally(() => clearTimeout(timer));
+    });
+  }
+  async function tool(name, args) {
+    let result;
+    if (S.compatTools || !S.standard) {
+      if (!window.openai?.callTool) throw new Error('当前宿主没有提供组件工具调用能力。');
+      result = await compatTool(name,args);
+    } else {
+      try {result = await request('tools/call', {name,arguments:args});}
+      catch (error) {
+        // A timed-out read has no side effects. Never repeat mutations or messages on another transport.
+        if (!error.uncertain || !['get_task','get_task_activity'].includes(name) || !window.openai?.callTool) throw error;
+        result = await compatTool(name,args);
+        const value = unpack(result);
+        if (value?.task_id !== args.task_id) throw new Error('兼容接口返回了其他任务，已忽略。');
+        S.compatTools = true; diagnostics();
+      }
+    }
+    return unpack(result);
+  }
+  function describeCheck(check) {
+    if (check.kind === 'image_saved') return {title:'原生成图已保存并读回', sub:`${check.path} · 保存字节与成图一致`};
+    if (check.kind === 'job_succeeded') return {title:`验证命令 ${check.action_id} 成功退出`, sub:`退出码 0，且发生在最后一次修改之后${check.min_duration_seconds ? ` · 至少 ${fmt.duration(check.min_duration_seconds)}` : ''}${check.value ? ` · stdout 包含 ${check.value.slice(0,90)}` : ''}`};
+    const value = check.value || '', short = value.length > 90 ? value.slice(0,90) + '…' : value;
+    if (check.kind === 'file_contains') return {title:`${check.path} 包含指定文本`, sub:short};
+    if (check.kind === 'file_equals') return {title:`${check.path} 内容完全等于（${value.length} 字符）`, sub:short};
+    return {title:`${check.path} 的 SHA-256 保持不变`, sub:fmt.short(value)};
+  }
+  function evidenceText(check, status) {
+    if (!status) return '等待检查';
+    const e = status.evidence || {};
+    if (e.error) return e.error;
+    if (check.kind === 'image_saved') {
+      if (!e.source_bytes_preserved) return '保存文件与原生成文件字节不一致，需核对原始成图。';
+      if (!e.read_back_action_id) return '文件已保存，等待读取本机图片检查。';
+      return `已保存并读回 · sha256 ${fmt.short(e.sha256)}`;
+    }
+    if (check.kind === 'job_succeeded') {
+      if (e.stale) return `${e.action_id || ''} exit ${e.exit_code} · 早于最后一次修改，需重新验证`;
+      return `${e.action_id || ''} · ${OUT[e.status] || e.status || ''}${e.exit_code == null ? '' : ` · 退出码 ${e.exit_code}`}`;
+    }
+    return `sha256 ${fmt.short(e.sha256)}`;
+  }
+  function setFact(id, value, total, label) {
+    const b = el('b', null, String(value)); if (total != null) b.append(el('small', null, ` / ${total}`));
+    $(id).replaceChildren(b, el('span', null, label));
+  }
+  function badge(text, tone, mono) {const b = el('span', `badge${mono ? ' mono' : ''}`, text); if (tone) b.dataset.t = tone; return b;}
+  function render() {
+    const t = S.task;
+    if (!t) {
+      if (S.waitExpired) {
+        document.querySelector('.panel').dataset.empty = 'true';
+        $('status').textContent = S.taskId ? '暂未同步' : '缺少任务数据';
+        $('status').dataset.state = 'paused';
+        $('objective').textContent = S.taskId ? '暂时无法读取这项任务' : '这条消息没有提供任务数据';
+        $('objective').removeAttribute('aria-busy'); $('objective-toggle').hidden = true;
+        note(S.taskId ? '面板已识别任务，但尚未收到状态。可刷新重试，或在聊天中请求查看这项任务。'
+                     : '这可能是未完成调用留下的旧面板。请以聊天中的最新执行结果为准；需要进度时可在聊天中重新请求查看任务。', 'warn');
+        $('live-state').textContent = S.taskId ? '仅恢复本面板对应的任务。' : '未绑定任务，不会查询其他会话的状态。';
+        $('identity').textContent = S.taskId ? `任务 ${S.taskId}` : '本条消息没有 task_id。';
+        $('auto-note').textContent = '尚未取得任务状态';
+      }
+      diagnostics(); reportSize(); return;
+    }
+    document.querySelector('.panel').dataset.empty = 'false';
+    const state = t.effective_status || t.status;
+    if (state !== 'active') S.armed = false;
+    $('status').textContent = NAMES[state] || state; $('status').dataset.state = state;
+    $('device').textContent = (t.device_label ? `· ${t.device_label}` : '') + (t.permission_mode === 'full_machine' ? ' · 全机访问' : '');
+    const objective = $('objective'); objective.textContent = t.objective; objective.removeAttribute('aria-busy'); objective.classList.toggle('clamped', !S.objectiveOpen);
+    const toggle = $('objective-toggle');
+    const overflow = !S.objectiveOpen && objective.scrollHeight > objective.clientHeight + 2;
+    toggle.hidden = !(overflow || S.objectiveOpen); toggle.textContent = S.objectiveOpen ? '收起' : '展开全文';
+    const done = t.plan.filter(p => p.status === 'completed').length, total = t.plan.length;
+    const cs = t.checks_status || {passed:0,total:t.checks.length,checks:[],running_jobs:[]};
+    const livePassed = !!t.checks_status && cs.passed === cs.total && !cs.running_jobs?.length;
+    const changedAfterCompletion = state === 'complete' && !!t.checks_status && !livePassed;
+    if (changedAfterCompletion) {$('status').textContent = '已完成 · 需复核'; $('status').dataset.state = 'changed';}
+    setFact('stat-steps', done, total, '步骤');
+    setFact('stat-checks', cs.passed, cs.total, '验收');
+    setFact('stat-actions', t.action_count, t.max_actions, '动作');
+    setFact('stat-continuations', t.continuations, t.max_continuations, '续跑');
+    if (['complete','cancelled'].includes(state)) setFact('stat-time', fmt.duration(t.elapsed_seconds ?? (t.updated_at - t.created_at)), null, '总用时');
+    else setFact('stat-time', fmt.span(t.remaining_seconds ?? (t.deadline - Date.now()/1000)), null, '剩余时间');
+    const percent = total ? Math.round(done/total*100) : 0;
+    $('segments').setAttribute('aria-valuenow', percent); $('segments').setAttribute('aria-valuetext', `${done} / ${total} 步已完成`);
+    $('segments').replaceChildren(...t.plan.map(p => {const i = el('i'); i.dataset.s = p.status; i.title = p.step; return i;}));
+    $('plan').replaceChildren(...t.plan.map(p => {
+      const li = el('li', 'step'); li.dataset.s = p.status; li.tabIndex = 0; li.setAttribute('role','button');
+      if (S.filter === p.id) li.dataset.filtered = 'true';
+      const glyph = el('span', 'glyph'); glyph.dataset.s = p.status; glyph.append(icon(p.status === 'completed' ? 'check' : p.status === 'in_progress' ? 'dot' : 'circle'));
+      const box = el('div'); box.append(el('div', 'txt', p.step));
+      const stat = t.step_stats?.[p.id];
+      let meta = p.status === 'in_progress' ? '当前步骤 · 尚无动作' : '尚无动作';
+      if (stat) meta = `${stat.actions} 个动作${stat.failed ? ` · ${stat.failed} 个失败` : ''}${stat.last ? ` · 最近 ${OPS[stat.last.operation] || stat.last.operation} · ${OUT[stat.last.outcome] || stat.last.outcome}${stat.last.exit_code == null ? '' : ` · 退出码 ${stat.last.exit_code}`}` : ''}`;
+      box.append(el('div', 'meta', meta));
+      const end = el('span');
+      if (stat?.last?.exit_code != null) end.append(badge(`exit ${stat.last.exit_code}`, stat.last.exit_code === 0 ? 'ok' : 'bad', true));
+      else if (p.status === 'in_progress') end.append(badge('进行中', 'run'));
+      li.append(glyph, box, end); li.title = S.filter === p.id ? '再次点击显示全部执行记录' : '只显示这一步的执行记录';
+      li.onclick = () => {S.filter = S.filter === p.id ? null : p.id; $('timeline').open = true; renderTimeline(); refreshActivity(); render();};
+      li.onkeydown = event => {if (event.key === 'Enter' || event.key === ' ') {event.preventDefault(); li.onclick();}};
+      return li;
+    }));
+    $('plan-hint').textContent = $('timeline').open ? '点击步骤筛选执行记录' : '';
+    $('checks-hint').textContent = cs.running_jobs?.length ? '有命令仍在运行' : livePassed ? '全部通过' : `${cs.passed} / ${cs.total} 已满足`;
+    $('checks').replaceChildren(...t.checks.map((c, index) => {
+      const status = cs.checks?.[index], li = el('li', 'check'), d = describeCheck(c);
+      const kind = !status ? 'pending' : status.passed ? 'pass' : status.evidence?.stale ? 'stale' : 'fail';
+      const glyph = el('span', 'glyph'); glyph.dataset.s = kind; glyph.append(icon(kind === 'pass' ? 'check' : kind === 'fail' ? 'x' : kind === 'stale' ? 'alert' : 'circle'));
+      const box = el('div'); box.append(el('div', 'txt', d.title));
+      if (d.sub) box.append(el('div', 'meta', d.sub));
+      box.append(el('div', 'ev', evidenceText(c, status)));
+      const end = el('span'); end.append(badge(kind === 'pass' ? '通过' : kind === 'fail' ? '未通过' : kind === 'stale' ? '需重验' : '待验证', kind === 'pass' ? 'ok' : kind === 'fail' ? 'bad' : kind === 'stale' ? 'warn' : ''));
+      li.append(glyph, box, end); return li;
+    }));
+    $('next').disabled = S.busy || !S.connected || !['active','paused'].includes(state) || S.submittedRevision === t.revision;
+    $('next').textContent = S.busy ? '正在处理…' : S.submittedRevision === t.revision ? '已请求继续' : state === 'paused' ? '恢复并请求 Chat 继续' : '请求 Chat 继续';
+    $('auto').disabled = S.busy || !S.connected || state !== 'active' || t.continuations >= t.max_continuations;
+    $('auto').textContent = S.armed ? '关闭自动续跑' : '自动续跑'; $('auto').setAttribute('aria-pressed', String(S.armed));
+    $('pause').disabled = S.busy || !S.connected || state !== 'active';
+    const canFullscreen = S.modes.includes('fullscreen') || (!S.standard && typeof window.openai?.requestDisplayMode === 'function');
+    $('mode').hidden = !canFullscreen; $('mode').replaceChildren(icon(S.mode === 'fullscreen' ? 'minimize' : 'maximize'));
+    $('mode').title = $('mode').ariaLabel = S.mode === 'fullscreen' ? '退出全屏' : '全屏查看';
+    const continuationDelay = t.image_save?.continuation_idle_seconds ?? 90;
+    $('auto-note').textContent = S.awaitingProgressRevision != null ? '等待新进展后恢复；当前检查点不重发' : S.armed ? (t.last_continued_revision === t.revision ? '已请求续跑，等待任务进展' : `自动续跑：${continuationDelay} 秒无进展时请求下一轮`) : '自动续跑已关闭';
+    $('auto-help').textContent = `自动续跑在任务 ${continuationDelay} 秒无更新且没有运行命令时请求下一轮。它无法读取 Chat 的真实结束事件；页面关闭或面板卸载后停止。本机不调用模型 API。`;
+    $('live-state').textContent = `任务 ${t.task_id.slice(0,8)} · ${S.connected ? `已同步 ${fmt.time(S.fetchedAt/1000)}` : '连接中断，以下为上次保存的状态'} · ${cs.running_jobs?.length ? `${cs.running_jobs.length} 个本机命令运行中，执行记录自动更新` : state === 'active' ? '等待 Chat 下一步操作；任务进行中不代表 AI 正在运行' : NAMES[state] || state}`;
+    $('identity').replaceChildren('任务 ', el('code', null, t.task_id), ` · 版本 ${t.revision} · 工作区 `, el('code', null, t.workspace));
+    const recordCount = (t.action_count || 0) + (t.observation_count || 0);
+    $('timeline-count').textContent = recordCount ? `${recordCount} 条记录` : '尚无记录';
+    if (state === 'complete') {
+      note(changedAfterCompletion ? '任务完成时已通过验收；当前检查有变化，请复核。历史验收和执行记录已保留。' : '任务已通过验收。执行记录已保存，自动续跑已停止。', changedAfterCompletion ? 'warn' : 'ok');
+      $('fallback').hidden = true;
+    }
+    else if (state === 'budget_limited') note('已达到时间或动作上限。进度已保存，可在聊天中安排后续任务。', 'warn');
+    else if (state === 'paused') note((t.pause_reason ? `已暂停：${t.pause_reason}` : '已暂停。') + ((t.mcp_cancellation || []).some(c => !c.cancellation_confirmed) ? ' 工具取消已请求，远端停止尚未确认，请核对回执。' : ''), 'warn');
+    else if (state === 'cancelled') note((t.pause_reason ? `已取消：${t.pause_reason}` : '已取消。') + ((t.mcp_cancellation || []).some(c => !c.cancellation_confirmed) ? ' 工具取消已请求，远端停止尚未确认，请核对回执。' : ''), 'warn');
+    else note('');
+    diagnostics(); reportSize();
+  }
+  const runningRecord = r => ['running','starting'].includes(r.outcome || r.result?.status || r.status);
+  function recordState(r) {
+    const res = r.result || {};
+    return JSON.stringify([r.status,r.outcome,r.finished_at,res.job_id,res.status,res.started_at,res.finished_at,res.exit_code,res.receipt_id,res.sha256]);
+  }
+  function recordNode(record) {
+    const r = S.details.get(record.action_id) || record;
+    const d = el('details', 'rec'); d.dataset.actionId = r.action_id; d.open = S.open.has(r.action_id);
+    const res = r.result || {}, inp = r.inputs || {}, outcome = r.outcome || res.status || r.status;
+    const bad = res.is_error === true || ['failed','timed_out','interrupted','cancelled'].includes(outcome) || (res.exit_code != null && res.exit_code !== 0);
+    const summary = el('summary');
+    const primary = inp.command || inp.path || (inp.pattern ? `${inp.pattern}${inp.query ? ` · “${inp.query}”` : ''}` : '') || (inp.job_id ? `job ${inp.job_id.slice(0,8)}` : '') || res.path || '';
+    const tone = bad ? 'bad' : (outcome === 'running' || outcome === 'starting') ? 'run' : 'ok';
+    const label = res.is_error === true ? '失败' : res.exit_code != null ? `exit ${res.exit_code}` : (OUT[outcome] || outcome);
+    const end = el('span', 'end'); if (r.duration_seconds != null) end.append(el('span', null, fmt.duration(r.duration_seconds))); end.append(badge(label, tone, res.exit_code != null));
+    const op = el('span', 'op'); op.title = OPS[r.operation] || r.operation; op.append(icon(r.operation));
+    const primaryNode = el('span', 'primary', primary); primaryNode.title = `${OPS[r.operation] || r.operation} · ${primary}`;
+    summary.append(el('span', 'ts', fmt.time(r.started_at)), op, primaryNode, end); d.append(summary);
+    const body = el('dl', 'body');
+    const row = (label, node) => {body.append(el('dt', null, label)); const dd = el('dd'); typeof node === 'string' ? dd.textContent = node : dd.append(node); body.append(dd);};
+    row('操作', `${OPS[r.operation] || r.operation}${r.status === 'failed' ? ' · 执行失败' : ''}`);
+    if (inp.command) row('命令', pre(inp.command));
+    if (res.cwd || inp.cwd) row('工作目录', res.cwd || inp.cwd);
+    if (inp.path || res.path) row('文件', res.path || inp.path);
+    if (inp.pattern) row('匹配', `${inp.pattern}${inp.query ? ` · 查找“${inp.query}”` : ''}`);
+    if (res.entries_count != null) row('条目', `${res.entries_count} 项${res.truncated ? '（已截断）' : ''}`);
+    if (res.results_count != null) row('结果', `${res.results_count} 个文件${res.truncated ? '（已截断）' : ''}`);
+    if (res.total_chars != null) row('内容', `${res.total_chars} 字符 · ${res.bytes} 字节${res.next_offset != null ? ' · 分段读取' : ''}`);
+    if (r.operation === 'read_image' && res.width != null) {
+      row('图片', `${res.source_format} · 原图 ${res.original_width}×${res.original_height} · 发送 ${res.width}×${res.height}`);
+      if (res.crop) row('裁剪区域', res.crop.join(', '));
+      if (res.frames > 1) row('图片帧', `第 ${res.frame_index + 1} / ${res.frames} 帧`);
+    }
+    const lines = text => text.split('\n').filter((line, i, all) => line !== '' || i < all.length - 1).length;
+    if (r.operation === 'write_file' && inp.content_chars != null) {row('写入', `${inp.content_chars} 字符 · ${OUT[res.status] || res.status || ''}`); if (inp.content_preview) row('内容预览', pre(inp.content_preview));}
+    if (r.operation === 'replace_text' && (inp.old_text != null || inp.new_text != null)) {const diff = el('div', 'diff'); diff.append(pre(inp.old_text ?? '', 'old'), pre(inp.new_text ?? '', 'new')); row('替换', diff);}
+    if (r.operation === 'apply_patch') {if (inp.patch_files) row('涉及文件', inp.patch_files.join('，')); if (res.summary) row('结果', `${res.summary} · +${res.lines_added ?? 0} / -${res.lines_removed ?? 0}`); if (inp.patch_preview) row('补丁', pre(inp.patch_preview));}
+    if (r.operation === 'call_mcp_tool' || r.operation === 'list_mcp_tools') {row('MCP', `${inp.server || res.server || ''}${inp.tool || res.tool ? ` · ${inp.tool || res.tool}` : ''}${res.is_error ? ' · 工具返回错误' : ''}`); if (inp.arguments_preview) row('参数', pre(inp.arguments_preview)); if (res.text) row(`返回 · ${lines(res.text)} 行`, pre(res.text, res.is_error ? 'err' : undefined));}
+    if (['find_skills','get_project_context','read_local_skill'].includes(r.operation) && (inp.query || inp.skill_path)) row(inp.query ? '查询' : '技能', inp.query || inp.skill_path);
+    if (res.previous_sha256) row('修改前 SHA-256', el('code', null, res.previous_sha256));
+    if (res.sha256) row(res.previous_sha256 ? '修改后 SHA-256' : 'SHA-256', el('code', null, res.sha256));
+    if (res.stdout) row(`stdout · ${lines(res.stdout)} 行${res.preview_truncated ? '+' : ''}`, pre(res.stdout));
+    if (res.stderr) row(`stderr · ${lines(res.stderr)} 行`, pre(res.stderr, 'err'));
+    if (res.error) row('错误', pre(res.error, 'err'));
+    if (res.error_source === 'localpilot') row('错误来源', res.error_stage === 'download_redirect' ? '本机：下载重定向校验' : '本机：文件参数校验');
+    if (res.error_code) row('错误代码', el('code', null, res.error_code));
+    if (res.wrote_file === false) row('文件状态', '未写入');
+    if (res.error === '只接受 ChatGPT 文件参数提供的 HTTPS oaiusercontent.com 下载地址；不能下载任意网址或本机地址。') {
+      row('旧回执说明', '这是 LocalPilot 的地址校验提示。oaiusercontent.com 是允许的域名，不是被拒绝的域名。旧回执未记录具体参数类型，无法仅凭此提示判断失败的是路径、协议还是域名；它也不是 ChatGPT 的文件外传拒绝。');
+    }
+    if (res.preview_truncated || res.output_truncated) {
+      const retained = res.output_strategy === 'tail' ? '每个输出流保留最后 64 KiB' : '本机最多保留 64 KiB';
+      const more = el('button', 'textbtn', res.preview_truncated ? `加载已保存输出（${retained}）` : `输出已截断；${retained}`);
+      more.disabled = !res.preview_truncated;
+      more.onclick = async event => {
+        event.preventDefault(); more.disabled = true; more.textContent = '正在加载…';
+        try {
+          const taskId = S.taskId;
+          const full = await tool('get_task_activity', {task_id:taskId, action_id:r.action_id});
+          if (taskId !== S.taskId) return;
+          const detail = full.records[0];
+          S.details.set(r.action_id, detail);
+          if (S.activity) S.activity.records = S.activity.records.map(item => item.action_id === r.action_id ? detail : item);
+          renderTimeline();
+        } catch (error) {more.disabled = false; more.textContent = error.message;}
+      };
+      row('', more);
+    }
+    row('时间', `${fmt.time(r.started_at)}${res.timeout_seconds ? ` · 超时上限 ${res.timeout_seconds} 秒` : ''}${res.network_enabled === false ? ' · 无网络' : res.network_enabled ? ' · 允许网络' : ''}`);
+    row('标识', el('span', 'ids', `action ${r.action_id} · step ${r.step_id}${res.job_id ? ` · job ${res.job_id}` : ''}${res.receipt_id ? ` · receipt ${res.receipt_id}` : ''}`));
+    d.append(body);
+    d.addEventListener('toggle', () => {d.open ? S.open.add(r.action_id) : S.open.delete(r.action_id);});
+    return d;
+  }
+  function renderTimeline() {
+    const t = S.task, data = S.activity, box = $('records');
+    $('filter').hidden = !S.filter;
+    if (S.filter) {const step = t?.plan.find(p => p.id === S.filter); $('filter-text').textContent = `仅显示步骤：${step ? step.step : S.filter}`;}
+    if (!data) {box.replaceChildren(el('p', 'technical', '展开后读取实际执行记录。')); return;}
+    let records = [...data.records].reverse();
+    if (S.filter) records = records.filter(r => r.step_id === S.filter);
+    if (!records.length) {box.replaceChildren(el('p', 'technical', S.filter ? '该步骤尚无动作。' : '尚未执行文件或命令操作。')); return;}
+    const order = (t?.plan || []).map(p => p.id), groups = new Map();
+    for (const r of records) {if (!groups.has(r.step_id)) groups.set(r.step_id, []); groups.get(r.step_id).push(r);}
+    const rank = id => order.indexOf(id) < 0 ? 1e9 : order.indexOf(id);
+    const nodes = [];
+    for (const id of [...groups.keys()].sort((a, b) => rank(a) - rank(b))) {
+      const step = t?.plan.find(p => p.id === id), group = el('section', 'group'), h = el('h3');
+      const glyph = el('span', 'glyph'); glyph.dataset.s = step?.status || 'pending'; glyph.append(icon(step?.status === 'completed' ? 'check' : step?.status === 'in_progress' ? 'dot' : 'circle'));
+      h.append(glyph, el('span', 't', step ? step.step : `步骤 ${id}`)); group.append(h);
+      const log = el('div', 'log');
+      for (const r of groups.get(id)) log.append(recordNode(r));
+      group.append(log); nodes.push(group);
+    }
+    if (data.total > data.records.length) nodes.push(el('p', 'technical', `仅显示最近 ${data.records.length} / ${data.total} 个动作。`));
+    box.replaceChildren(...nodes);
+  }
+  function refresh() {
+    if (!S.taskId) return Promise.resolve(false);
+    if (refreshPromise) return refreshPromise;
+    refreshPromise = (async () => {
+      const taskId = S.taskId;
+      const result = await tool('get_task', {task_id:taskId});
+      if (result?.task_id !== taskId || !Array.isArray(result.plan)) throw new Error('返回的任务与本面板不一致，已忽略。');
+      receive(result); S.connected = true;
+      if (S.failures) {S.failures = 0; feedback('连接已恢复，任务状态已更新。');}
+      render(); return true;
+    })().catch(error => {S.connected = false; render(); throw error;}).finally(() => {refreshPromise = null;});
+    return refreshPromise;
+  }
+  async function refreshActivity() {
+    if (!S.taskId || S.activityBusy) return;
+    S.activityBusy = true;
+    const taskId = S.taskId, revision = S.task?.revision ?? null;
+    try {
+      const activity = await tool('get_task_activity', {task_id:taskId, limit:50});
+      if (taskId !== S.taskId || activity.task_id !== taskId) throw new Error('执行记录与本面板任务不一致，已忽略。');
+      for (const record of activity.records) {
+        const cached = S.details.get(record.action_id);
+        // Running output is a snapshot. Terminal output may stay cached only while its receipt is unchanged.
+        if (cached && (runningRecord(cached) || recordState(cached) !== recordState(record))) S.details.delete(record.action_id);
+      }
+      S.activity = activity; S.activityRevision = revision; renderTimeline();
+    }
+    catch (error) {$('records').replaceChildren(el('p', 'technical', error.message));}
+    finally {S.activityBusy = false;}
+  }
+  $('timeline').addEventListener('toggle', () => {if ($('timeline').open) refreshActivity();});
+  $('filter-clear').onclick = () => {S.filter = null; renderTimeline(); render();};
+  $('objective-toggle').onclick = () => {S.objectiveOpen = !S.objectiveOpen; render();};
+  async function continueTask(manual) {
+    if (!S.task || S.busy || (!manual && !S.armed)) return;
+    S.busy = true; render();
+    let delivery = 'none';
+    try {
+      phase('正在读取任务状态…');
+      await refresh();
+      if (S.task.status === 'paused' && manual) receive(await tool('set_task_state', {task_id:S.taskId, status:'active', reason:'用户在任务面板点击恢复并继续。'}));
+      await refresh();
+      if ((S.task.effective_status || S.task.status) !== 'active') return;
+      phase('正在申请本轮续跑…');
+      delivery = 'claiming';
+      const claim = await tool('claim_task_continuation', {task_id:S.taskId, expected_revision:S.task.revision});
+      if (!claim.send) {S.armed = false; feedback(claim.reason === 'Continuation already sent for this checkpoint; no automatic repeat without progress.' ? '这一进度已请求过续跑。请查看聊天记录，避免重复发送。' : claim.reason); fallback(); return;}
+      S.submittedRevision = S.task.revision;
+      delivery = 'sending';
+      phase('正在向当前 Chat 发送续跑消息…');
+      // A failed or uncertain submission is never retried automatically.
+      // ChatGPT's live bridge validates ContentBlock[] (the static SEP example differs).
+      if (S.standard) await request('ui/message', {role:'user', content:[{type:'text', text:claim.prompt}]});
+      else if (window.openai?.sendFollowUpMessage) await window.openai.sendFollowUpMessage({prompt:claim.prompt, scrollToBottom:true});
+      else throw new Error('当前 Chat 未提供后续消息接口。任务状态已保留，可在聊天中手动继续。');
+      delivery = 'sent';
+      receive({...S.task, continuations:claim.sequence, last_continued_revision:S.submittedRevision});
+      feedback(`Chat 已接收第 ${claim.sequence} 次续跑请求，等待任务进展。`);
+      // Let normal polling refresh later. Some hosts defer component reads during the new model turn;
+      // acknowledged delivery must release the controls without waiting for another tools/call.
+    } catch (error) {
+      if (delivery === 'claiming' || delivery === 'sending') {
+        S.armed = false; S.autoSuspended = true;
+        if (error.uncertain) {
+          // Preserve the user's preference. A later checkpoint proves forward progress without resending this one.
+          S.awaitingProgressRevision = S.submittedRevision ?? S.task.revision;
+        } else if (typeof S.task?.auto_continue === 'boolean') {
+          try {await tool('set_task_automation', {task_id:S.taskId, enabled:false});} catch { /* Explicit rejection keeps this instance suspended. */ }
+        }
+        feedback(error.message, !error.uncertain); fallback();
+      } else {
+        // A read failure before claiming or after acknowledged delivery cannot create a duplicate message.
+        S.failures += 1;
+        feedback(`${delivery === 'sent' ? '续跑消息已确认；' : '尚未发送续跑消息；'}${error.message}（稍后自动恢复状态读取）`, true);
+        fallback();
+      }
+    }
+    finally {S.busy = false; render();}
+  }
+  $('next').onclick = () => continueTask(true);
+  $('auto').onclick = async () => {
+    const enabled = !S.armed;
+    S.busy = true; render();
+    try {
+      if (typeof S.task?.auto_continue === 'boolean') {
+        const task = await tool('set_task_automation', {task_id:S.taskId, enabled});
+        S.autoSuspended = false; S.awaitingProgressRevision = null; receive(task);
+      } else S.armed = enabled;
+      feedback(S.armed ? '自动续跑已开启并保存。页面刷新后会恢复；长命令由本机独立运行。' : '自动续跑已关闭。');
+    } catch (error) {feedback(error.message, true);}
+    finally {S.busy = false; render();}
+  };
+  $('refresh').replaceChildren(icon('refresh'));
+  $('refresh').onclick = async () => {
+    S.failures = 0;
+    try {
+      if (!S.taskId) {bindTask(window.openai?.toolInput?.task_id || window.openai?.widgetState?.localpilotTaskId); receive(window.openai?.toolOutput);}
+      if (!S.taskId) {S.waitExpired = true; feedback(''); render(); return;}
+      if (await refresh()) {if ($('timeline').open) await refreshActivity(); feedback('任务状态已更新。');}
+    } catch (error) {feedback(error.message, true); fallback(); render();}
+  };
+  $('pause').onclick = async () => {
+    S.armed = false; S.busy = true; render();
+    try {receive(await tool('set_task_state', {task_id:S.taskId, status:'paused', reason:'用户在任务面板暂停；停止本任务已知的运行命令。'})); feedback('任务已暂停，已保存计划和回执。');}
+    catch (error) {feedback(error.message, true);}
+    finally {S.busy = false; render();}
+  };
+  $('mode').onclick = async () => {
+    const target = S.mode === 'fullscreen' ? 'inline' : 'fullscreen';
+    try {
+      const result = S.standard ? await request('ui/request-display-mode', {mode:target}) : await window.openai.requestDisplayMode({mode:target});
+      applyHost({displayMode: result?.mode || target});
+    } catch (error) {feedback(error.message, true);}
+  };
+  bindTask(window.openai?.toolInput?.task_id || window.openai?.widgetState?.localpilotTaskId);
+  receive(window.openai?.toolOutput);
+  applyHost({theme:window.openai?.theme, displayMode:window.openai?.displayMode});
+  request('ui/initialize', {appInfo:{name:'LocalPilot task panel', version:VERSION}, appCapabilities:{availableDisplayModes:['inline','fullscreen']}, protocolVersion:'2026-01-26'})
+    .then(async result => {
+      S.standard = true; S.host = `协议 ${result?.protocolVersion || '未知'} · 宿主 ${result?.hostInfo?.name || '未提供'}`;
+      applyHost(result?.hostContext); notify('ui/notifications/initialized', {}); reportSize(true);
+      if (await refresh()) {feedback('任务进度已同步。'); if ($('timeline').open) await refreshActivity();}
+    })
+    .catch(async error => {
+      if (!S.standard && window.openai?.callTool) {try {if (await refresh()) {feedback('已通过兼容接口连接。'); return;}} catch { /* Surface bridge failure below. */ }}
+      S.failures = 1; feedback(error.message, true); fallback(); render();
+    });
+  setTimeout(() => {if (!S.task && !S.tornDown) {S.waitExpired = true; render();}}, TASK_DATA_TIMEOUT_MS);
+  setInterval(async () => {
+    if (S.tornDown || S.busy || polling || (!S.standard && !window.openai?.callTool)) return;
+    S.ticks += 1;
+    // Transient failures slow polling down instead of stopping it; a successful refresh resets the backoff.
+    if (S.failures && S.ticks % Math.min(2 ** S.failures, 12) !== 0) return;
+    polling = true;
+    try {
+      if (!S.taskId) {bindTask(window.openai?.toolInput?.task_id || window.openai?.widgetState?.localpilotTaskId); receive(window.openai?.toolOutput);}
+      await refresh();
+      const t = S.task;
+      // A job can finish without changing the plan revision. Fetch its terminal receipt once after that transition.
+      if ($('timeline').open && t && (S.activityRevision !== t.revision || t.checks_status?.running_jobs?.length || S.activity?.records.some(runningRecord))) await refreshActivity();
+      if (S.armed && t && (t.effective_status || t.status) === 'active') {
+        // Idle time comes from the agent's own clock; the browser only adds the seconds since that reading.
+        const idle = (t.idle_seconds ?? (Date.now()/1000 - t.updated_at)) + (Date.now() - S.fetchedAt)/1000;
+        if (idle >= (t.image_save?.continuation_idle_seconds ?? 90) && t.last_continued_revision !== t.revision && S.submittedRevision !== t.revision && !t.checks_status?.running_jobs?.length) await continueTask(false);
+      }
+    } catch (error) {S.failures += 1; feedback(`连接中断，保留上次状态。${error.message}（稍后自动重试）`, true); fallback(); render();}
+    finally {polling = false;}
+  }, 5000);
+  function reportSize(force = false) {
+    // The document scrollHeight is at least the current iframe height, so it cannot report a collapse.
+    const height = Math.ceil(document.querySelector('.panel').getBoundingClientRect().height);
+    if (!force && Math.abs(height - reportedHeight) < 2) return;
+    // Only count a height as reported once a bridge actually carried it; an early observation before the
+    // handshake must not suppress the first real notification.
+    if (S.standard) {notify('ui/notifications/size-changed', {width:Math.ceil(document.documentElement.scrollWidth), height}); reportedHeight = height;}
+    else if (typeof window.openai?.notifyIntrinsicHeight === 'function') {window.openai.notifyIntrinsicHeight(height); reportedHeight = height;}
+  }
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => reportSize()).observe(document.body);
+  window.addEventListener('load', () => reportSize(true));
+})();
+</script></body></html>
