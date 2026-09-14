@@ -59,7 +59,7 @@ def verify(output):
     check('image_count_and_descriptions_match_attached_limit', len(images) == 6 and '2 additional images omitted' in text and '[image 7:' not in text)
 
     with tempfile.TemporaryDirectory(prefix='lp-image-bridge-edges-') as directory:
-        root = Path(directory); (root/'state').mkdir(); storage = Storage(root/'state')
+        root = Path(directory).resolve(); (root/'state').mkdir(); storage = Storage(root/'state')
         fixture = root/'fixture.py'; fixture.write_text(FIXTURE)
         cfg = {'enabled': True, 'config_files': [], 'servers': {
             name: {'command': sys.executable, 'args': [str(fixture)]} for name in ('alpha', 'beta')},
@@ -111,7 +111,8 @@ def verify(output):
             'profile_dir': str(root/'profile'), 'chrome_path': chrome, 'headless': True,
             'launch_if_missing': True, 'navigation_timeout_ms': 5000, 'snapshot_max_chars': 12000,
             'screenshot_max_side': 1600, 'user_chrome_dir': str(root/'fake-user')}
-        browser = BrowserControl({'browser': browser_cfg, 'state_dir': str(root/'state')}, storage)
+        browser_settings = {'browser': browser_cfg, 'state_dir': str(root/'state'), 'workspaces': {'fixture': str(root)}}
+        browser = BrowserControl(browser_settings, storage)
         fresh = external = None
         try:
             fixture = root/'page.html'
@@ -130,7 +131,7 @@ def verify(output):
             result = browser.click(ref=ref, snapshot=False)
             check('original_ref_keeps_original_node', result['title'] == 'original')
             browser.shutdown()
-            fresh = BrowserControl({'browser': browser_cfg, 'state_dir': str(root/'state')}, storage)
+            fresh = BrowserControl(browser_settings, storage)
             reconnected = fresh.snapshot()
             check('tab_identity_survives_restart_and_closed_tabs', reconnected['tab_id'] == opened_tab)
             check('closed_tab_id_not_reused_after_restart', rejects(lambda: fresh.snapshot(tab_id='t1')))
@@ -141,7 +142,7 @@ def verify(output):
             check('zero_image_limits_are_rejected', rejects(lambda: fresh.screenshot(max_side=0)) and rejects(lambda: fresh.screenshot(max_tiles=0)))
             fresh.evaluate('() => {document.body.style.height="100000px";}')
             check('huge_fullpage_rejected_before_capture', rejects(lambda: fresh.screenshot(full_page=True)))
-            external = BrowserControl({'browser': {**browser_cfg, 'cdp_url': fresh.cdp_url}, 'state_dir': str(root/'state')}, storage)
+            external = BrowserControl({**browser_settings, 'browser': {**browser_cfg, 'cdp_url': fresh.cdp_url}}, storage)
             external.tabs()
             detached = external.stop()
             check('explicit_external_chrome_is_not_stopped', not detached['stopped_localpilot_chrome'] and fresh._probe() is not None)

@@ -2,6 +2,7 @@
 
 [English](README.md) · **简体中文**
 
+[从安装到使用的完整教程](docs/WIKI.zh-CN.md)
 **在 ChatGPT 网页普通 Chat 中，直接完成本机 AI Coding。**
 
 让 ChatGPT 读取项目、理解本地技能、修改代码、运行测试，并把真实结果带回对话。沿用现有 Chat 的模型能力，LocalPilot 本身不接入额外模型 API、不启动 Codex，也不要求切到 Work。
@@ -101,7 +102,7 @@ brew install openai/tools/tunnel-client
 
 ## 当前状态
 
-版本 **0.7.5**。文件、shell、技能、图片、浏览器和任务控制器已有本地回归；普通 Chat 已实际完成技能加载、代码/文本修改、图片旋转、真实验证和结项。[验证详情](docs/VERIFICATION.zh-CN.md)
+版本 **0.7.6**。补齐浏览器本地文件 URL、链接文件、内嵌本机页面和截图期间跳转的检查，并包含网页专用图标。**667/667 项本地回归通过**，其中包含独立 Chrome 测试。此前普通 Chat 已完成技能加载、代码/文本修改、图片旋转、真实验证和结项；本次补丁未重跑普通 Chat 验收。[验证详情](docs/VERIFICATION.zh-CN.md)
 
 普通 Chat 仍决定何时调用工具及结束一轮。LocalPilot 能拒绝“验收未过却结项”，不能给 Chat 安装真正的 Stop hook，也不保证一小时无人干预工作。生成式改图还依赖宿主生图能力及文件交接，不能把本机旋转测试当成生成式编辑保真度通过。
 

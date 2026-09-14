@@ -6,7 +6,7 @@
 
 Let ChatGPT read your project, load local skills, edit code, run tests, and bring the actual results back into the conversation. LocalPilot uses the model already available in your Chat. It does not start Codex, require Work mode, or initiate additional model-generation API calls.
 
-[Quick start](#quick-start) · [Features](#what-it-can-do) · [Tunnel guide — 中文](docs/TUNNEL.zh-CN.md) · [Configuration — 中文](docs/USAGE.zh-CN.md) · [Verification — 中文](docs/VERIFICATION.zh-CN.md)
+[Complete setup guide — 中文](docs/WIKI.zh-CN.md) · [Quick start](#quick-start) · [Features](#what-it-can-do) · [Tunnel guide — 中文](docs/TUNNEL.zh-CN.md) · [Configuration — 中文](docs/USAGE.zh-CN.md) · [Verification — 中文](docs/VERIFICATION.zh-CN.md)
 
 ![LocalPilot task plan and acceptance panel](docs/images/task-panel.png)
 
@@ -119,7 +119,7 @@ Here, `project` is the workspace ID configured during initialization. The demo v
 
 ## Current status and limits
 
-Version **0.7.5**. The publication checkout passed **626/626 local regression checks**, covering files, shell, skills, images, browser control, and task management. Ordinary Chat has also completed skill loading, code/text changes, image rotation, actual verification, and task finalization. See the [verification record — 中文](docs/VERIFICATION.zh-CN.md) and [machine-readable results](docs/validation-0.7.5.json).
+Version **0.7.6** adds browser checks for local file URLs, linked files, embedded local frames, and navigation during capture, plus the web-compatible icon. The release passed **667/667 local regression checks**, including isolated Chrome tests. Earlier ordinary Chat acceptance covered skill loading, code/text changes, image rotation, actual verification, and task finalization; it was not repeated for this patch. See the [verification record — 中文](docs/VERIFICATION.zh-CN.md) and [machine-readable results](docs/validation-0.7.6.json).
 
 Ordinary Chat still controls tool selection and when a turn ends. LocalPilot can reject completion when acceptance checks fail, but it cannot install a native Stop hook into Chat or guarantee uninterrupted hour-long work. Generative image editing additionally depends on host image tools and file handoff; successful local rotation is not proof of generative editing fidelity.
 

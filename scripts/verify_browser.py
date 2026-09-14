@@ -18,6 +18,7 @@ import threading
 import time
 
 from mcp import Client, StdioServerParameters
+from mcp.server.mcpserver.exceptions import ToolError
 
 PAGE = '''<!doctype html><html><head><meta charset="utf-8"><title>LocalPilot Browser Fixture</title></head><body>
 <h1>Fixture Home</h1>
@@ -131,6 +132,18 @@ async def verify(output):
     site = f'http://127.0.0.1:{server.server_address[1]}'
     with tempfile.TemporaryDirectory(prefix='localpilot-browser-') as directory:
         base = Path(directory).resolve(); work = base / 'project'; work.mkdir()
+        allowed_file = work / 'allowed-file.txt'; allowed_file.write_text('LOCALPILOT-WORKSPACE-FILE')
+        outside_file = base / 'outside-file.txt'; outside_file.write_text('LOCALPILOT-OUTSIDE-FILE')
+        linked_file = work / 'linked-file.txt'; linked_file.symlink_to(outside_file)
+        hardlinked_file = work / 'hardlinked-file.txt'; os.link(outside_file, hardlinked_file)
+        blocked_dir = work / '.ssh'; blocked_dir.mkdir()
+        (blocked_dir / 'alias.txt').symlink_to(allowed_file)
+        outside_page = base / 'outside.html'
+        outside_page.write_text('<title>PRIVATE-TITLE-FIXTURE</title><p>PRIVATE-FRAME-FIXTURE</p>')
+        frame_page = work / 'frame.html'
+        frame_page.write_text(f'<title>Allowed container</title><iframe src="{outside_page.as_uri()}"></iframe>')
+        link_page = work / 'link.html'
+        link_page.write_text(f'<title>Local link</title><a href="{outside_page.as_uri()}">Outside fixture</a>')
         fixture = base / 'image_fixture.py'; fixture.write_text(FIXTURE_MCP)
         toml = base / 'codex.toml'; toml.write_text(f'[mcp_servers.pictures]\ncommand = "{sys.executable}"\nargs = ["{fixture}"]\n')
         user_chrome = base / 'userchrome'; fake_user_chrome(user_chrome)
@@ -157,6 +170,27 @@ async def verify(output):
             check('occupied_port_automatically_uses_free_endpoint', status['chrome_reachable'] and status['cdp_url'] != site and (profile_dir / 'DevToolsActivePort').is_file())
             check('desktop_window_size', opened['viewport']['width'] >= 1200)
             check('device_status_reports_browser', (await data(client, 'device_status'))['browser']['connected'] is True)
+            local_page = await data(client, 'browser_navigate', url=allowed_file.as_uri())
+            local_text = await data(client, 'browser_snapshot', mode='text')
+            check('file_url_inside_workspace_allowed', local_page['url'] == allowed_file.as_uri() and local_text['text'] == 'LOCALPILOT-WORKSPACE-FILE')
+            check('file_url_outside_workspace_rejected', await rejected(client, 'browser_navigate', url=outside_file.as_uri()))
+            check('tabs_open_cannot_bypass_file_boundary', await rejected(client, 'browser_tabs', action='open', url=outside_file.as_uri()))
+            check('file_url_symlink_rejected', await rejected(client, 'browser_navigate', url=linked_file.as_uri()))
+            check('file_url_hardlink_rejected', await rejected(client, 'browser_navigate', url=hardlinked_file.as_uri()))
+            check('file_url_hidden_symlink_rejected', await rejected(client, 'browser_navigate', url=(blocked_dir / 'alias.txt').as_uri()))
+            check('file_url_embedded_outside_frame_rejected', await rejected(client, 'browser_navigate', url=frame_page.as_uri()))
+            check('embedded_file_blocks_screenshot', await rejected(client, 'browser_screenshot'))
+            check('embedded_file_blocks_evaluate', await rejected(client, 'browser_evaluate', expression='document.title'))
+            frame_tabs = await data(client, 'browser_tabs', action='list')
+            check('restricted_tab_title_not_returned', frame_tabs['tabs'][0].get('access_denied') is True and frame_tabs['tabs'][0]['url'] == '' and 'Allowed container' not in json.dumps(frame_tabs))
+            await data(client, 'browser_navigate', url=link_page.as_uri())
+            check('file_link_navigation_result_rejected', await rejected(client, 'browser_click', text='Outside fixture'))
+            check('already_open_outside_file_blocks_snapshot', await rejected(client, 'browser_snapshot', mode='text'))
+            check('already_open_outside_file_blocks_select', await rejected(client, 'browser_tabs', action='select', tab_id='t1'))
+            outside_tabs = await data(client, 'browser_tabs', action='list')
+            check('outside_file_title_not_returned', outside_tabs['tabs'][0].get('access_denied') is True and 'PRIVATE-TITLE-FIXTURE' not in json.dumps(outside_tabs))
+            opened = await data(client, 'browser_navigate', url=site + '/')
+            check('navigate_away_from_restricted_page_recovers', opened['title'] == 'LocalPilot Browser Fixture')
             snap = opened['snapshot']
             check('shadow_dom_and_select_visible', '影子按钮' in snap and 'options=生产|测试' in snap and 'checkbox' in snap)
             q_ref = ref_of(snap, 'textbox "搜索应用"')
@@ -233,6 +267,16 @@ async def verify(output):
             def control(user_dir):
                 cfg = {**browser_cfg, 'cdp_url': None, 'chrome_path': None, 'launch_if_missing': False, 'snapshot_max_chars': 12000, 'screenshot_max_side': 1600, 'user_chrome_dir': str(user_dir)}
                 return BrowserControl({'state_dir': str(state), 'browser': cfg}, None)
+            protected = base / 'protected'; protected.mkdir()
+            guarded_control = BrowserControl({'state_dir': str(state), 'browser': {**browser_cfg, 'cdp_url': None, 'chrome_path': None, 'launch_if_missing': False,
+                                             'snapshot_max_chars': 12000, 'screenshot_max_side': 1600, 'user_chrome_dir': str(user_chrome)},
+                                              'permission_mode': 'full_machine', 'workspaces': {'machine': '/'}, 'protected_paths': [str(protected)]}, None)
+            try:
+                guarded_control._authorize_url((protected / 'secret.txt').as_uri())
+                protected_denied = False
+            except ToolError as exc:
+                protected_denied = '受保护目录' in str(exc)
+            check('full_machine_file_url_still_denies_protected_paths', protected_denied)
             check('user_chrome_detection_matches_data_dir', control(profile_dir)._user_chrome_running() is True and control(base / 'nowhere')._user_chrome_running() is False)
             fresh = control(user_chrome)
             check('fresh_agent_restores_managed_dynamic_endpoint', fresh.browser is None and fresh._probe() is not None and fresh.cdp_url != site)

@@ -94,6 +94,7 @@ def verify(output):
             started = threading.Event(); effects = []
             class Page:
                 url = 'https://fixture.invalid/'
+                frames = []
                 async def title(self): return 'Fixture'
             page = Page(); browser.pages = {'t1': page}; browser.active = 't1'
             class Locator:

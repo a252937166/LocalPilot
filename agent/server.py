@@ -1,5 +1,6 @@
 """LocalPilot: local files and supervised shell, exposed over private MCP stdio."""
 from __future__ import annotations
+import base64
 import json
 import os
 from pathlib import Path
@@ -15,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from mcp.types import ToolAnnotations, CallToolResult, ImageContent, TextContent
+from mcp.types import ToolAnnotations, CallToolResult, Icon, ImageContent, TextContent
 from config import VERSION, load_config
 from filesystem import Files
 from jobs import Jobs
@@ -43,7 +44,12 @@ image_handoff = ImageHandoff(files, harness, image_editor)
 image_workflow = ImageWorkflow(harness, image_handoff)
 harness.operations.update(edit_image=image_editor.edit, save_chat_image=image_editor.save, download_image=image_editor.download)
 session_marker = uuid.uuid4().hex
-mcp = MCPServer('LocalPilot', version=VERSION, instructions=(
+icon_path = Path(__file__).with_name('assets') / 'localpilot-icon.png'
+# Send the icon with MCP initialization; plugin-package assets alone do not reach
+# a standalone Tunnel connection. A data URI also works without a public CDN.
+mcp_icons = [Icon(src='data:image/png;base64,' + base64.b64encode(icon_path.read_bytes()).decode('ascii'),
+                  mime_type='image/png', sizes=['256x256'])] if icon_path.is_file() else None
+mcp = MCPServer('LocalPilot', version=VERSION, icons=mcp_icons, instructions=(
     'LocalPilot provides local Mac file, image and shell tools in Chat, plus the user\'s local skill libraries. '
     'Skill routing: whenever a request names a skill or mentions an internal system, platform, CLI, product or domain workflow '
     '(for example 学城/km, 大象/dx, ONES, Mafka, Raptor, FSD, novel writing), call find_skills with the request text (or check device_status.skill_index) before acting; '

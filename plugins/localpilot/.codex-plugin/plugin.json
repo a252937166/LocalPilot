@@ -1,6 +1,6 @@
 {
   "name": "localpilot",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "在普通 Chat 中发现本机技能、读写文件、运行 shell、处理图片，并控制 Chrome 浏览器。",
   "skills": "./skills/",
   "apps": "./.app.json",
@@ -16,7 +16,9 @@
     "developerName": "LocalPilot",
     "defaultPrompt": [
       "用 LocalPilot 读取本机图片，按我的要求编辑，并把结果保存到原目录的新文件中。"
-    ]
+    ],
+    "logo": "./assets/localpilot-icon.png",
+    "composerIcon": "./assets/localpilot-icon.png"
   },
   "author": {
     "name": "a252937166",

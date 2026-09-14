@@ -17,6 +17,7 @@ import re
 import shutil
 import socket
 import sqlite3
+import stat
 import subprocess
 import threading
 import time
@@ -27,6 +28,7 @@ import urllib.request
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp_bridge import CallControl, BridgeStopped
 from image_delivery import encode_preview, MAX_SOURCE_PIXELS
+from filesystem import blocked
 
 CHROME_PATHS = ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
                 '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
@@ -189,6 +191,9 @@ class BrowserControl:
         self.max_side = int(cfg['screenshot_max_side'])
         self.window_size = str(cfg.get('window_size') or '1440,900')
         self.user_chrome = Path(cfg.get('user_chrome_dir') or USER_CHROME).expanduser()
+        self.permission_mode = settings.get('permission_mode', 'workspace')
+        self.workspace_roots = [Path(p).expanduser().resolve() for p in settings.get('workspaces', {}).values()]
+        self.protected_paths = [Path(p).expanduser().resolve() for p in settings.get('protected_paths', [])]
         self.state = Path(settings['state_dir']) / 'browser'
         self.legacy_tab_ids = self.profile_dir.exists() and not (self.state / 'tab-ids.json').exists()
         self.storage = storage
@@ -211,6 +216,66 @@ class BrowserControl:
         self.launched = None
         self.log_handle = None
         self.version = ''
+
+    def _authorize_url(self, url):
+        """Apply file-tool path boundaries to browser file:// navigation."""
+        if not isinstance(url, str) or not url:
+            raise ToolError('url 必须是 http(s)://、file://、about:、chrome: 或 data: 地址。')
+        try:
+            parsed = urllib.parse.urlsplit(url)
+        except ValueError as exc:
+            raise ToolError('url 格式不合法。') from exc
+        scheme = parsed.scheme.lower()
+        if scheme not in ('http', 'https', 'file', 'about', 'chrome', 'data'):
+            raise ToolError('url 必须是 http(s)://、file://、about:、chrome: 或 data: 地址。')
+        if scheme != 'file':
+            return
+        if parsed.netloc.lower() not in ('', 'localhost'):
+            raise ToolError('file:// 只允许本机路径。')
+        try:
+            decoded = urllib.parse.unquote(parsed.path, errors='strict')
+        except UnicodeError as exc:
+            raise ToolError('file:// 路径编码不合法。') from exc
+        if '\x00' in decoded or '\\' in parsed.path or not decoded.startswith('/'):
+            raise ToolError('file:// 需要无空字符、无反斜杠的本机绝对路径。')
+        lexical = Path(decoded)
+        try:
+            target = lexical.resolve()
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise ToolError('file:// 路径无法解析。') from exc
+        if any(target == protected or target.is_relative_to(protected) for protected in self.protected_paths):
+            raise ToolError('该 file:// 路径属于 LocalPilot 受保护目录。')
+        if self.permission_mode != 'full_machine':
+            # Check the original path too: resolve() alone erases blocked path
+            # components and follows links that the workspace file tools refuse.
+            roots = [root for root in self.workspace_roots if lexical == root or lexical.is_relative_to(root)]
+            if not roots:
+                raise ToolError('file:// 路径位于已授权 workspace 之外。')
+            root = max(roots, key=lambda path: len(path.parts))
+            parts = lexical.relative_to(root).parts
+            if '..' in parts or any(blocked(part) for part in parts):
+                raise ToolError('该 file:// 路径属于本机保留的凭据或配置目录。')
+            current = root
+            try:
+                for part in parts:
+                    current /= part
+                    info = current.lstat()
+                    if stat.S_ISLNK(info.st_mode) or (stat.S_ISREG(info.st_mode) and info.st_nlink != 1):
+                        raise ToolError('workspace 模式的 file:// 路径不能经过符号链接或硬链接。')
+                    if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
+                        raise ToolError('file:// 仅支持普通文件或目录。')
+            except FileNotFoundError:
+                pass  # Chrome reports missing files; there are no bytes to expose.
+            except OSError as exc:
+                raise ToolError('file:// 路径无法访问。') from exc
+
+    def _authorize_page(self, page):
+        self._authorize_url(page.url or 'about:blank')
+        # Screenshots and JS can expose a local subframe while the main page
+        # remains on an allowed URL. Check every attached local frame as well.
+        for frame in page.frames:
+            if urllib.parse.urlsplit(frame.url).scheme.lower() == 'file':
+                self._authorize_url(frame.url)
 
     # ---- infrastructure --------------------------------------------------------------------------
     def _ensure_loop(self):
@@ -468,12 +533,14 @@ class BrowserControl:
         return next((k for k, p in self.pages.items() if p is page), None)
 
     async def _snapshot(self, page, mode='interactive', max_chars=None, selector=None):
+        self._authorize_page(page)
         # Refs keep increasing for the life of a tab, so a ref from an older snapshot never silently hits another element.
         tab_id = self._tab_id(page)
         start = self.ref_base.get(tab_id, 0)
         opts = {'mode': mode, 'maxChars': max_chars or self.snapshot_chars, 'selector': selector, 'start': start,
                 'refAttribute': self.ref_attribute}
         for attempt in range(2):
+            self._authorize_page(page)
             try:
                 data = await page.evaluate(SNAPSHOT_JS, opts)
                 break
@@ -487,6 +554,8 @@ class BrowserControl:
                     pass
         if data.get('error'):
             raise ToolError(f'快照失败：{data["error"]}')
+        self._authorize_url(data['url'])
+        self._authorize_page(page)
         self.ref_base[tab_id] = max(start, data['count'])
         names = self.ref_names.setdefault(tab_id, {})
         for node in data['nodes']:
@@ -516,6 +585,7 @@ class BrowserControl:
 
     async def _complete(self, page, result, snapshot, chars):
         """Common tail of every action: optional fresh snapshot, then the dialogs answered since the last result."""
+        self._authorize_page(page)
         if snapshot:
             result.update(await self._snapshot(page, 'interactive', chars))
         dialogs = self.dialogs.pop(self._tab_id(page), None)
@@ -526,6 +596,7 @@ class BrowserControl:
     async def _goto(self, page, url, wait_until, timeout):
         """Navigate; when the page committed but never reached wait_until, report the timeout instead of failing the call."""
         from playwright.async_api import TimeoutError as PlaywrightTimeout
+        self._authorize_url(url)
         before = page.url
         try:
             return await page.goto(url, wait_until=wait_until, timeout=timeout), False
@@ -586,8 +657,7 @@ class BrowserControl:
 
     # ---- public tools ------------------------------------------------------------------------------
     def navigate(self, url, tab_id=None, wait_until='load', snapshot=True, timeout_ms=None, *, _control=None, _deadline=None):
-        if not isinstance(url, str) or not re.match(r'^(https?|file|about|chrome|data):', url):
-            raise ToolError('url 必须是 http(s)://、file://、about: 或 chrome: 地址。')
+        self._authorize_url(url)
         if wait_until not in ('load', 'domcontentloaded', 'networkidle', 'commit'):
             raise ToolError('wait_until 取 load、domcontentloaded、networkidle 或 commit。')
         timeout = int(timeout_ms or self.nav_timeout)
@@ -615,8 +685,10 @@ class BrowserControl:
         async def run():
             page = await self._page(tab_id)
             if mode == 'text':
+                self._authorize_page(page)
                 script = 'sel => { const el = sel ? document.querySelector(sel) : (document.querySelector("main, article, [role=main]") || document.body); return el ? el.innerText : ""; }'
                 text = await page.evaluate(script, selector)
+                self._authorize_page(page)
                 text = re.sub(r'\n{3,}', '\n\n', text or '').strip()
                 result = {'tab_id': self._tab_id(page), 'url': page.url, 'title': await self._title(page), 'text': text[:max_chars],
                           'total_chars': len(text), 'truncated': len(text) > max_chars}
@@ -631,6 +703,7 @@ class BrowserControl:
         self._check_dialog(dialog)
         async def run():
             page = await self._page(tab_id)
+            self._authorize_page(page)
             locator, label = await self._resolve(page, ref, selector, text)
             with self._dialog_scope(self._tab_id(page), dialog, dialog_text):
                 await locator.scroll_into_view_if_needed(timeout=5000)
@@ -649,6 +722,7 @@ class BrowserControl:
         self._check_dialog(dialog)
         async def run():
             page = await self._page(tab_id)
+            self._authorize_page(page)
             locator, label = await self._resolve(page, ref, selector, None)
             with self._dialog_scope(self._tab_id(page), dialog):
                 await locator.scroll_into_view_if_needed(timeout=5000)
@@ -673,6 +747,7 @@ class BrowserControl:
         self._check_dialog(dialog)
         async def run():
             page = await self._page(tab_id)
+            self._authorize_page(page)
             detail = {}
             locator = None
             with self._dialog_scope(self._tab_id(page), dialog):
@@ -728,6 +803,7 @@ class BrowserControl:
             raise ToolError('expression 不能为空。')
         async def run():
             page = await self._page(tab_id)
+            self._authorize_page(page)
             value = await page.evaluate(expression, arg)
             text = json.dumps(value, ensure_ascii=False, default=str)
             result = {'tab_id': self._tab_id(page), 'url': page.url, 'result': value if len(text) <= max_chars else None,
@@ -746,6 +822,7 @@ class BrowserControl:
             raise ToolError('max_tiles 为 1–6。')
         async def run():
             page = await self._page(tab_id)
+            self._authorize_page(page)
             viewport = await page.evaluate('({width: innerWidth, height: innerHeight, dpr: devicePixelRatio, pageWidth: Math.max(document.documentElement.scrollWidth,innerWidth), pageHeight: Math.max(document.documentElement.scrollHeight,innerHeight)})')
             if ref or selector:
                 locator, label = await self._resolve(page, ref, selector, None)
@@ -755,6 +832,9 @@ class BrowserControl:
                 if full_page and viewport['pageWidth'] * viewport['pageHeight'] * viewport['dpr']**2 > MAX_SOURCE_PIXELS:
                     raise ToolError('整页截图超过 4000 万像素；请滚动并截取视口，或指定元素。')
                 data = await page.screenshot(type='png', full_page=bool(full_page), timeout=30000)
+            # A page can navigate while a screenshot is pending. Refuse the
+            # result before it reaches the on-disk screenshot cache or MCP.
+            self._authorize_page(page)
             return page, label, data, viewport
         page, label, data, viewport = self._run(run(), 90, _control, _deadline)
         with Image.open(io.BytesIO(data)) as image:
@@ -797,6 +877,8 @@ class BrowserControl:
     def tabs(self, action='list', tab_id=None, url=None, force=False, profile=None, *, _control=None, _deadline=None):
         if action not in TAB_ACTIONS:
             raise ToolError(f'action 取 {", ".join(TAB_ACTIONS)}。')
+        if action == 'open' and url:
+            self._authorize_url(url)
         if action == 'status':
             return self._run(asyncio.to_thread(self.status), 15, _control, _deadline, allow_disabled=True)
         if action == 'clone_logins':
@@ -820,11 +902,20 @@ class BrowserControl:
                 await page.close()
             elif action == 'select':
                 page = await self._page(tab_id)
+                self._authorize_page(page)
                 await page.bring_to_front()
             rows = []
             for key, page in list(self.pages.items()):
                 if page.is_closed(): continue
-                rows.append({'tab_id': key, 'url': page.url, 'title': (await self._title(page))[:120], 'active': key == self.active})
+                try:
+                    self._authorize_page(page)
+                    title = (await self._title(page))[:120]
+                    self._authorize_page(page)
+                    rows.append({'tab_id': key, 'url': page.url, 'title': title, 'active': key == self.active})
+                except ToolError:
+                    # Keep the tab ID so a blocked/restored tab can be closed
+                    # or navigated away from, without returning its contents.
+                    rows.append({'tab_id': key, 'url': '', 'title': '受限本机页面', 'active': key == self.active, 'access_denied': True})
             result = {'action': action, 'active': self.active, 'tabs': rows}
             if note:
                 result['note'] = note

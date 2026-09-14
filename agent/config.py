@@ -5,7 +5,7 @@ import re
 import os
 from pathlib import Path
 
-VERSION = '0.7.5'
+VERSION = '0.7.6'
 DEFAULT_CONFIG = Path.home() / '.config/localpilot/config.json'
 DEFAULT_STATE = Path.home() / '.local/state/localpilot'
 

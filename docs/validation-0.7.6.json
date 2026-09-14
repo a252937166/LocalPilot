@@ -1,0 +1,145 @@
+{
+  "version": "0.7.6",
+  "checked_at": "2026-09-14T10:07:40.789060+00:00",
+  "scope": "macOS local and isolated Chrome regressions; no new ChatGPT conversation or model API calls",
+  "suites": [
+    {
+      "suite": "local",
+      "passed": 31,
+      "total": 31,
+      "ok": true
+    },
+    {
+      "suite": "harness",
+      "passed": 43,
+      "total": 43,
+      "ok": true
+    },
+    {
+      "suite": "local_skills",
+      "passed": 48,
+      "total": 48,
+      "ok": true
+    },
+    {
+      "suite": "upgrades",
+      "passed": 23,
+      "total": 23,
+      "ok": true
+    },
+    {
+      "suite": "image_workflow",
+      "passed": 56,
+      "total": 56,
+      "ok": true
+    },
+    {
+      "suite": "review_fixes",
+      "passed": 38,
+      "total": 38,
+      "ok": true
+    },
+    {
+      "suite": "regressions",
+      "passed": 7,
+      "total": 7,
+      "ok": true
+    },
+    {
+      "suite": "audit_edges",
+      "passed": 17,
+      "total": 17,
+      "ok": true
+    },
+    {
+      "suite": "image_bridge_edges",
+      "passed": 24,
+      "total": 24,
+      "ok": true,
+      "rerun_after_fixture_update": true
+    },
+    {
+      "suite": "images",
+      "passed": 40,
+      "total": 40,
+      "ok": true
+    },
+    {
+      "suite": "image_edit",
+      "passed": 96,
+      "total": 96,
+      "ok": true
+    },
+    {
+      "suite": "image_handoff",
+      "passed": 37,
+      "total": 37,
+      "ok": true
+    },
+    {
+      "suite": "long_runtime",
+      "passed": 29,
+      "total": 29,
+      "ok": true
+    },
+    {
+      "suite": "browser_paths",
+      "passed": 25,
+      "total": 25,
+      "ok": true
+    },
+    {
+      "suite": "browser",
+      "passed": 66,
+      "total": 66,
+      "ok": true
+    },
+    {
+      "suite": "browser_sessions",
+      "passed": 8,
+      "total": 8,
+      "ok": true
+    },
+    {
+      "suite": "capability_fixes",
+      "passed": 39,
+      "total": 39,
+      "ok": true,
+      "rerun_after_fixture_update": true
+    },
+    {
+      "suite": "panel",
+      "passed": 40,
+      "total": 40,
+      "ok": true
+    }
+  ],
+  "passed": 667,
+  "total": 667,
+  "ok": true,
+  "initial_fixture_failures": [
+    "image_bridge_edges: no workspace configured for the local fixture",
+    "capability_fixes: page mock missing frames"
+  ],
+  "agent_sha256": {
+    "browser_control.py": "8352a25eab3b3f7d6aed8c1c7e800b8f8be03835e8bafa8130c5adce88d0ec2d",
+    "config.py": "c49ad69e3f0cda765748a4a202aba2319a74abda8cf65c421b27e4e140530b1b",
+    "durable_jobs.py": "f66cc3be6c76c245c612a118215cae6d105ea1c66da5c66f28e97e0dbc44edc4",
+    "filesystem.py": "159aaabda7afd41b497731b9f3244295ce93b679e417448301859afa5f372746",
+    "harness.py": "795d2fe6ba2105c81dfb6d1a5ad236a97e0700d09efdbca115295ebb12d695ce",
+    "image_delivery.py": "540f12022bd92f5ecfaa9678739ff8ee7cf7c15d4ddaaa8a8b5bfa5b75bb486c",
+    "image_editor.py": "cf1d7722e97b750c8dccdaa6da3b81104b5a393c8e8918c63e2183f18aabb56a",
+    "image_handoff.py": "861b61343c71f77d042ebe0d07c4660259c1ab4caf15ad7cc8f472206a1f8b55",
+    "image_workflow.py": "ea9e3301701a4d6443e41e5cc0b07cf68add47d71a82cb94b145e217c2717847",
+    "images.py": "e8284b5f7dca893554a15432fba69efe3831c2dd782fbccec0afb53f1a602a4d",
+    "job_worker.py": "efb6f6da00eeb04b00320e47f68d660dfa8e80add581a6d33cde8e67a9e858ec",
+    "jobs.py": "f47b5daa6904b7dd6f3feb17e6501e66a5b014e489fd7878d852a09fc04e2940",
+    "local_skills.py": "bfe5b3d4fe3ec72ba9ac0744a4c63898dc1769e315acf1423f01365cac1ea59b",
+    "mcp_bridge.py": "3e9b42649a4424458d6ac36269b517a67b3d54f732f4009daef77dea97728400",
+    "patching.py": "1133d543af49ad25c4e0aeb8449aa4e0968b67042e6806805421176321779f06",
+    "presentation.py": "5e414594c8432f0bd2957e922d8609dc6b9f487c15ca0e92a11cf495fed41de6",
+    "result_images.py": "94a29d5ea79980ec0241560dc2f94e7a3532f8ba28e1c12d1fff4724d26fb0fc",
+    "server.py": "8a3903e5858da3cd00880cf2c59b09954eefe0456db261a8beb773645b94de20",
+    "storage.py": "d085db2b1541b63484c77b5c511b777a6af949021bd1f38ac359537714c178f8"
+  }
+}

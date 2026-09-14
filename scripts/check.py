@@ -11,7 +11,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 CORE = ['local', 'harness', 'local_skills', 'upgrades', 'image_workflow',
         'review_fixes', 'regressions', 'audit_edges', 'image_bridge_edges',
-        'images', 'image_edit', 'image_handoff', 'long_runtime']
+        'images', 'image_edit', 'image_handoff', 'long_runtime', 'browser_paths']
 BROWSER = ['browser', 'browser_sessions', 'capability_fixes', 'panel']
 
 
